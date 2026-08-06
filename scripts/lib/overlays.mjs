@@ -1,12 +1,8 @@
 /**
- * overlays.mjs — capy_outfit_{00..04} / capy_hat_{00..03}. ART.md §3.2.
+ * overlays.mjs — capy_outfit_{00..04} / capy_hat_{00..03}. ART.md §3.2 (2026-08-07 개정판).
  *
- * down/up은 ART.md가 명시한 down 좌표를 그대로 재사용한다(HAT_BOX/OUTFIT_BOX가 down·up 동일).
- * ⚠️ right(그리고 flipX인 left)의 구체적 좌표는 ART.md에 없다 — down 좌표만 명세돼 있다.
- * §3.2 표의 HAT_BOX/OUTFIT_BOX(right)는 있지만 도형은 없어서, right 형태는 **tech가
- * ART.md §7의 "1px 조정은 tech 재량" 범위를 넘어 새로 그렸다.** down의 실루엣을 right
- * 방향 몸통(§3.1 right: 머리 (17,7)-(27,17), 몸통 (4,15)-(22,26))에 맞춰 유사한 비율로
- * 이식한 것이며, gd가 검토해야 한다. 상세는 세션 보고 참조.
+ * 이번 개정에서 gd가 down/right 양쪽 좌표를 전부 명시했다 — tech가 지어낸 도형은 없다.
+ * up은 down 좌표를 그대로 재사용한다(§3.2 표: down = up). left는 flipX(right) (§2.4).
  *
  * FRAME_DY 공유: 이 파일은 body 생성기(capybara.mjs/goblin.mjs)와 마찬가지로 buildMaskFrame() 하나만
  * 호출한다. FRAME_DY는 mask-sprite.mjs 안에 유일한 상수로 존재하고 두 생성기가 그 함수를 통해서만
@@ -26,96 +22,102 @@ function lineShape(x0, y0, x1, y1, color, opts = {}) {
 }
 
 // ============ capy_outfit_* ============
+// 몸통이 폭 16→20(down) / 19→21(right)로 넓어졌으므로 옷 가로 폭도 §3.2 새 좌표로 키웠다.
 
 const outfit = {
   1: {
+    // 멜빵바지: tile_spa + capy_gray_mid 단추
     down: [
-      rectShape(9, 20, 22, 27, 'tile_spa'),
-      rectShape(12, 16, 12, 20, 'tile_spa'), // 어깨끈(좌)
+      rectShape(8, 20, 23, 26, 'tile_spa'), // 바지
+      rectShape(12, 16, 12, 20, 'tile_spa'), // 어깨끈(좌) 세로 1px
       rectShape(19, 16, 19, 20, 'tile_spa'), // 어깨끈(우)
-      { x0: 12, y0: 20, x1: 12, y1: 20, color: 'capy_gray_mid', recolorOnly: true }, // 단추
-      { x0: 19, y0: 20, x1: 19, y1: 20, color: 'capy_gray_mid', recolorOnly: true },
+      rectShape(12, 20, 12, 20, 'capy_gray_mid', { recolorOnly: true }), // 단추
+      rectShape(19, 20, 19, 20, 'capy_gray_mid', { recolorOnly: true }),
     ],
     right: [
-      rectShape(6, 19, 21, 26, 'tile_spa'),
-      rectShape(13, 15, 14, 19, 'tile_spa'), // 어깨끈
-      { x0: 13, y0: 19, x1: 13, y1: 19, color: 'capy_gray_mid', recolorOnly: true }, // 단추
+      rectShape(5, 19, 22, 26, 'tile_spa'), // 바지
+      rectShape(14, 15, 15, 19, 'tile_spa'), // 어깨끈
+      rectShape(14, 19, 14, 19, 'capy_gray_mid', { recolorOnly: true }), // 단추
     ],
   },
   2: {
+    // 수건: capy_white + capy_gray_mid 줄 (흰색 카피바라 대응 — §3.2 공통규칙 4)
     down: [
-      rectShape(9, 18, 22, 25, 'capy_white'),
-      { x0: 9, y0: 20, x1: 22, y1: 20, color: 'capy_gray_mid', recolorOnly: true },
-      { x0: 9, y0: 23, x1: 22, y1: 23, color: 'capy_gray_mid', recolorOnly: true },
+      rectShape(8, 18, 23, 25, 'capy_white'),
+      rectShape(8, 20, 23, 20, 'capy_gray_mid', { recolorOnly: true }),
+      rectShape(8, 23, 23, 23, 'capy_gray_mid', { recolorOnly: true }),
     ],
     right: [
-      rectShape(6, 17, 21, 24, 'capy_white'),
-      { x0: 6, y0: 19, x1: 21, y1: 19, color: 'capy_gray_mid', recolorOnly: true },
-      { x0: 6, y0: 22, x1: 21, y1: 22, color: 'capy_gray_mid', recolorOnly: true },
+      rectShape(5, 18, 21, 25, 'capy_white'),
+      rectShape(5, 20, 21, 20, 'capy_gray_mid', { recolorOnly: true }),
+      rectShape(5, 23, 21, 23, 'capy_gray_mid', { recolorOnly: true }),
     ],
   },
   3: {
+    // 우비: accent_amber + capy_white 줄
     down: [
-      rectShape(8, 17, 23, 26, 'accent_amber', { removeCorners: true }),
-      { x0: 8, y0: 18, x1: 23, y1: 18, color: 'capy_white', recolorOnly: true },
+      rectShape(6, 17, 25, 26, 'accent_amber', { removeCorners: true }),
+      rectShape(6, 18, 25, 18, 'capy_white', { recolorOnly: true }),
     ],
     right: [
-      rectShape(4, 15, 22, 25, 'accent_amber', { removeCorners: true }),
-      { x0: 4, y0: 16, x1: 22, y1: 16, color: 'capy_white', recolorOnly: true },
+      rectShape(4, 16, 24, 26, 'accent_amber', { removeCorners: true }),
+      rectShape(4, 17, 24, 17, 'capy_white', { recolorOnly: true }),
     ],
   },
   4: {
+    // 작업복: capy_gray_dark + accent_amber 대각 안전선
     down: [
-      rectShape(9, 18, 22, 26, 'capy_gray_dark'),
-      lineShape(10, 24, 21, 19, 'accent_amber', { recolorOnly: true }),
+      rectShape(8, 18, 23, 25, 'capy_gray_dark'),
+      lineShape(9, 23, 22, 18, 'accent_amber', { recolorOnly: true }),
     ],
     right: [
-      rectShape(6, 17, 21, 25, 'capy_gray_dark'),
-      lineShape(7, 23, 18, 18, 'accent_amber', { recolorOnly: true }),
+      rectShape(5, 18, 21, 25, 'capy_gray_dark'),
+      lineShape(6, 23, 19, 18, 'accent_amber', { recolorOnly: true }),
     ],
   },
 };
 
 // ============ capy_hat_* ============
+// HAT_BOX 개정: down/up y+2, right y+1 (머리가 낮아진 만큼). x는 전 방향 그대로.
 
 const hat = {
   1: {
-    // 밀짚모자: 챙 아랫줄·크라운 하단 2줄은 dark (연갈색 카피바라 위에서 사라지지 않게, §3.2 실제 사례)
+    // 밀짚모자: 챙 아랫줄·크라운 하단 2줄은 dark (연갈색 카피바라 위에서 사라지지 않게)
     down: [
-      rectShape(7, 7, 24, 8, 'capy_brown_light'),
-      rectShape(11, 2, 20, 7, 'capy_brown_light', { removeCorners: true }),
-      { x0: 7, y0: 8, x1: 24, y1: 8, color: 'capy_brown_dark', recolorOnly: true },
-      { x0: 11, y0: 6, x1: 20, y1: 7, color: 'capy_brown_dark', recolorOnly: true },
+      rectShape(7, 9, 24, 10, 'capy_brown_light'), // 챙
+      rectShape(11, 4, 20, 9, 'capy_brown_light', { removeCorners: true }), // 크라운
+      rectShape(7, 10, 24, 10, 'capy_brown_dark', { recolorOnly: true }), // 챙 아랫줄
+      rectShape(11, 8, 20, 9, 'capy_brown_dark', { recolorOnly: true }), // 크라운 하단 2줄
     ],
     right: [
-      rectShape(15, 8, 28, 9, 'capy_brown_light'),
-      rectShape(18, 3, 25, 7, 'capy_brown_light', { removeCorners: true }),
-      { x0: 15, y0: 9, x1: 28, y1: 9, color: 'capy_brown_dark', recolorOnly: true },
-      { x0: 18, y0: 6, x1: 25, y1: 7, color: 'capy_brown_dark', recolorOnly: true },
+      rectShape(15, 9, 28, 10, 'capy_brown_light'),
+      rectShape(18, 4, 25, 9, 'capy_brown_light', { removeCorners: true }),
+      rectShape(15, 10, 28, 10, 'capy_brown_dark', { recolorOnly: true }),
+      rectShape(18, 8, 25, 9, 'capy_brown_dark', { recolorOnly: true }),
     ],
   },
   2: {
-    // 유자
+    // 유자: accent_amber 열매 + tile_bush_mid 잎
     down: [
-      rectShape(13, 3, 18, 8, 'accent_amber', { removeCorners: true }),
-      rectShape(18, 2, 20, 3, 'tile_bush_mid'),
+      rectShape(13, 5, 18, 10, 'accent_amber', { removeCorners: true }),
+      rectShape(18, 4, 20, 5, 'tile_bush_mid'),
     ],
     right: [
-      rectShape(19, 4, 24, 9, 'accent_amber', { removeCorners: true }),
-      rectShape(24, 3, 26, 4, 'tile_bush_mid'),
+      rectShape(19, 5, 24, 10, 'accent_amber', { removeCorners: true }),
+      rectShape(24, 4, 26, 5, 'tile_bush_mid'),
     ],
   },
   3: {
-    // 헬멧
+    // 헬멧: tile_spa 돔 + capy_white 하이라이트
     down: [
-      { type: 'rectTopCorners', x0: 10, y0: 3, x1: 21, y1: 9, n: 2, color: 'tile_spa' },
-      rectShape(9, 9, 22, 10, 'tile_spa'),
-      rectShape(12, 4, 14, 4, 'capy_white'),
+      { type: 'rectTopCorners', x0: 10, y0: 5, x1: 21, y1: 11, n: 2, color: 'tile_spa' },
+      rectShape(9, 11, 22, 12, 'tile_spa'), // 챙
+      rectShape(12, 6, 14, 6, 'capy_white'),
     ],
     right: [
-      { type: 'rectTopCorners', x0: 17, y0: 4, x1: 28, y1: 10, n: 2, color: 'tile_spa' },
-      rectShape(16, 10, 29, 11, 'tile_spa'),
-      rectShape(19, 5, 21, 5, 'capy_white'),
+      { type: 'rectTopCorners', x0: 17, y0: 5, x1: 28, y1: 11, n: 2, color: 'tile_spa' },
+      rectShape(16, 11, 29, 12, 'tile_spa'),
+      rectShape(19, 6, 21, 6, 'capy_white'),
     ],
   },
 };

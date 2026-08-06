@@ -12,8 +12,12 @@
  *      이번 세션 지시에 "2개 이상"으로 명시됐다. ART.md §3.2 규칙4 원문은 "3개 이상
  *      (주색+보조색+ink)"이다 — 이 스크립트는 지시받은 2를 그대로 구현하고 불일치를
  *      보고서에 남긴다. 실제 생성된 오버레이는 전부 3색 이상이라 어느 임계값으로도 통과한다.
+ *   8. A13 외곽선 닫힘 (§1.2 C5, 2026-08-07 추가): capy_body_N·goblin_walk·goblin_idle의
+ *      모든 프레임에서, 알파≠0 픽셀 중 4-이웃 하나라도 알파 0(또는 프레임 밖)인 픽셀은
+ *      전부 ink(#16121C)여야 한다. 디테일(주둥이 패치·허리띠 등)이 외곽선보다 나중에
+ *      찍히면서 1px 구멍을 내는 실수를 기계로 잡는다.
  *
- * ART.md §6의 A7(좌우대칭)/A10(몸통 2색)/A11(명도)/A12(타일 이음매)는 이번 7항목에
+ * ART.md §6의 A7(좌우대칭)/A10(몸통 2색)/A11(명도)/A12(타일 이음매)는 이번 범위에
  * 없으므로 여기서 검사하지 않는다 — 구현하지 않았다는 사실을 그대로 보고한다 (하네스 14).
  */
 
@@ -68,18 +72,18 @@ const OVERLAY_NON00 = [
 const FRAME_DY = [0, -1, 0, -1];
 const FRAME_SIZE = 32;
 
-// ART.md §3.2 — dir index: 0 down, 1 up, 2 left, 3 right
+// ART.md §3.2 (2026-08-07 개정) — dir index: 0 down, 1 up, 2 left, 3 right
 const HAT_BOX = {
-  0: { x0: 7, x1: 24, y0: 1, y1: 10 },
-  1: { x0: 7, x1: 24, y0: 1, y1: 10 },
-  2: { x0: 1, x1: 16, y0: 2, y1: 11 },
-  3: { x0: 15, x1: 30, y0: 2, y1: 11 },
+  0: { x0: 7, x1: 24, y0: 3, y1: 12 },
+  1: { x0: 7, x1: 24, y0: 3, y1: 12 },
+  2: { x0: 1, x1: 16, y0: 3, y1: 12 },
+  3: { x0: 15, x1: 30, y0: 3, y1: 12 },
 };
 const OUTFIT_BOX = {
   0: { x0: 6, x1: 25, y0: 15, y1: 28 },
   1: { x0: 6, x1: 25, y0: 15, y1: 28 },
-  2: { x0: 7, x1: 29, y0: 13, y1: 27 },
-  3: { x0: 2, x1: 24, y0: 13, y1: 27 },
+  2: { x0: 5, x1: 29, y0: 14, y1: 28 },
+  3: { x0: 2, x1: 26, y0: 14, y1: 28 },
 };
 
 const failures = [];
@@ -254,6 +258,53 @@ for (const name of OVERLAY_NON00) {
   if (colors.size < 2) fail(`[A9 다색] ${name}.png: 서로 다른 색 ${colors.size}개 (2개 이상 필요)`);
 }
 
+// ---- 8. A13 외곽선 닫힘 (ART.md §6 A13 / §1.2 C5) ----
+// 대상: 캐릭터 스프라이트 전부. 프레임 단위로 검사한다 — 시트 상의 이웃 프레임 픽셀이
+// 경계 판정에 끼어들면 안 되기 때문이다(프레임 밖 = 캔버스 밖으로 취급).
+const INK_RGB = hexToRgb(PALETTE.ink);
+const A13_TARGETS = {
+  capy_body_01: 4,
+  capy_body_02: 4,
+  capy_body_03: 4,
+  capy_body_04: 4,
+  goblin_walk: 4,
+  goblin_idle: 2, // 64×128 — 2프레임 × 4방향
+};
+for (const [name, cols] of Object.entries(A13_TARGETS)) {
+  const img = images[name];
+  if (!img) continue;
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < cols; col++) {
+      const frame = getFrame(img, FRAME_SIZE, col, row);
+      const alphaAt = (x, y) => {
+        if (x < 0 || y < 0 || x >= FRAME_SIZE || y >= FRAME_SIZE) return 0; // 프레임 밖 = 투명
+        return frame[(y * FRAME_SIZE + x) * 4 + 3];
+      };
+      let violations = 0;
+      let firstViolation = null;
+      for (let y = 0; y < FRAME_SIZE; y++) {
+        for (let x = 0; x < FRAME_SIZE; x++) {
+          const i = (y * FRAME_SIZE + x) * 4;
+          if (frame[i + 3] === 0) continue;
+          const isBoundary =
+            alphaAt(x - 1, y) === 0 || alphaAt(x + 1, y) === 0 || alphaAt(x, y - 1) === 0 || alphaAt(x, y + 1) === 0;
+          if (!isBoundary) continue;
+          const isInk = frame[i] === INK_RGB[0] && frame[i + 1] === INK_RGB[1] && frame[i + 2] === INK_RGB[2];
+          if (!isInk) {
+            violations++;
+            if (!firstViolation) firstViolation = [x, y];
+          }
+        }
+      }
+      if (violations > 0) {
+        fail(
+          `[A13 외곽선] ${name}.png dir=${row} frame=${col}: 경계 픽셀 중 ink 아닌 것 ${violations}개 (첫 위반 (${firstViolation[0]},${firstViolation[1]}))`
+        );
+      }
+    }
+  }
+}
+
 // ---- 결과 ----
 if (notes.length > 0) {
   console.log('verify-sprites: 참고');
@@ -266,6 +317,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`verify-sprites: OK — ${names.length}개 PNG, 7항목 전부 통과`);
-console.log('verify-sprites: 미구현(이번 세션 7항목 범위 밖, ART.md §6 참고): A7 좌우대칭, A10 몸통2색, A11 명도조건, A12 타일이음매');
+console.log(`verify-sprites: OK — ${names.length}개 PNG, 8항목(A13 포함) 전부 통과`);
+console.log('verify-sprites: 미구현(범위 밖, ART.md §6 참고): A7 좌우대칭, A10 몸통2색, A11 명도조건, A12 타일이음매');
 process.exit(0);
