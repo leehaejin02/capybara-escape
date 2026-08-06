@@ -47,6 +47,29 @@
 > 커밋 히스토리에 그대로 남으면, 4번 문서의 주장을 **증명**하는 물증이 된다.
 > 마지막에 한 번에 몰아 커밋하면 이 증거가 사라진다. → 작업 단위마다 커밋한다.
 
+#### 배포 절차 (GitHub Pages)
+
+워크플로 파일 `.github/workflows/deploy.yml`은 이미 만들어져 있고, `main`에 push되면 자동으로
+`npm run build`(경계 검사 포함) → Pages 배포까지 돈다. **단, 저장소 Settings에서 한 번은
+사람이 직접 웹 UI로 설정을 켜야 워크플로가 실제로 배포 권한을 갖는다.** 이건 `gh` CLI로
+자동화하지 않았다(에이전트가 배포를 실제로 트리거하지 않도록 하기 위함) — 아래를 사용자가 직접 한다.
+
+1. GitHub 저장소(`leehaejin02/capybara-escape`) 웹 페이지 → **Settings → Pages**로 이동
+2. **Build and deployment → Source**를 `Deploy from a branch`에서 **`GitHub Actions`로 변경**
+   (이걸 안 하면 워크플로가 `actions/deploy-pages`에서 권한 오류로 실패한다)
+3. 이 상태에서 `.github/workflows/deploy.yml`을 포함한 커밋을 `main`에 push
+   (또는 이미 push된 뒤라면 **Actions 탭 → Deploy to GitHub Pages → Run workflow**로 수동 실행 —
+   워크플로에 `workflow_dispatch`가 걸려 있어 커밋 없이도 재배포 가능)
+4. Actions 탭에서 워크플로 실행이 초록색으로 끝나는지 확인
+5. 배포 완료 후 URL 확인: **Settings → Pages** 상단에 뜨는 링크, 예상값은
+   `https://leehaejin02.github.io/capybara-escape/`
+6. 실제로 브라우저에서 열어 흰 화면/404 없이 게임이 뜨는지 확인
+   (특히 `vite.config.ts`의 `base: '/capybara-escape/'`가 저장소 이름과 정확히 일치해야 한다 —
+   저장소 이름을 바꾸면 이 값도 같이 바꿔야 한다)
+
+> 하네스 13("마감 당일에 처음 배포하지 않는다")에 따라 이 절차는 **마감 하루 전이 아니라 지금 미리
+> 한 번 실행해 성공을 확인해 둔다.**
+
 ### 2. 플레이 동영상 (YouTube)
 
 - **30~60초** 분량, **실제 게임 플레이 장면 중심**
