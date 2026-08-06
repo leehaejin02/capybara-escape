@@ -1,0 +1,20 @@
+{
+  "name": "capybara-escape",
+  "private": true,
+  "version": "0.1.0",
+  "description": "NAN 2026 사전 과제 — Capybara Escape",
+  "scripts": {
+    "dev": "vite",
+    "check": "node scripts/check-boundary.mjs",
+    "build": "npm run check && vite build",
+    "sim": "node scripts/check-boundary.mjs && tsc -p tsconfig.sim.json && node dist-sim/tools/sim-cli.js"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0"
+  }
+}
