@@ -1,0 +1,53 @@
+{
+  // sim 전용 컴파일 설정.
+  //
+  // ── 이 파일이 실제로 하는 일 ──
+  // - 컴파일 범위 격리: src/sim, src/config, src/tools만 include한다.
+  //   src/scenes, src/main.ts는 이 컴파일 단위에 들어오지 않는다.
+  // - sim이 브라우저 API 타입(DOM lib) 없이도 컴파일되는지 확인한다 — "lib": ["ES2022"]만 두고
+  //   DOM을 넣지 않았으므로, sim 코드가 window/document 등 브라우저 전역을 실수로 참조하면
+  //   여기서 타입 에러로 잡힌다.
+  // - `npm run sim`의 크리티컬 패스에 있어 개발 흐름에서 자동으로 실행된다.
+  //
+  // ── 이 파일이 하지 못하는 일 (2026-08-06 tech 실측, director가 독립 재현) ──
+  // 설치된 npm 패키지(phaser 포함)의 import를 막지 못한다. TypeScript에는 "이 디렉터리에서
+  // 이 패키지 import 금지" 같은 옵션이 없다. src/sim/world.ts에 `import Phaser from 'phaser'`를
+  // 넣고 `tsc -p tsconfig.sim.json`만 단독으로 돌려봤는데 exit 0로 통과했다 — phaser가 정상
+  // 설치돼 있어 타입 해석이 되기 때문이다. 우회를 두 가지 시도했고 둘 다 실패했다:
+  //   - `moduleResolution: "Classic"` (node_modules를 보지 않는 모드) → TypeScript 7에서
+  //     옵션 자체가 제거됨 (TS5108)
+  //   - `paths`로 "phaser"를 존재하지 않는 경로에 리맵 → 매핑이 실패하면 조용히 일반 node
+  //     해석으로 폴백해 여전히 통과함
+  // 따라서 **경계를 실제로 지키는 것은 scripts/check-boundary.mjs 하나뿐**이다.
+  // 런타임 카나리(sim이 Phaser를 값으로 import하면 Node에서 window 접근으로 죽는 것)는 보조
+  // 장치이고, 그마저도 import된 값이 실제로 코드에서 참조될 때만 작동한다 — 참조되지 않는
+  // import는 tsc가 컴파일 출력에서 지워버려(unused import elision) require 자체가 실행되지
+  // 않기 때문이다. 자세한 재현 로그는 WORKLOG.md 참조.
+  //
+  // ── "types": ["node"] 관련 메모 ──
+  // 애초 계획은 "types": [] 로 전역 앰비언트를 전부 차단하고 @types/node를 src/tools에서만
+  // 쓰게 하는 것이었다. 실측 결과 TypeScript 7에서는 "types": [] 상태에서 'node:process' 같은
+  // 명시적 모듈 import조차 해석하지 못했고(TS2591), 우회하려면 어떤 파일이든 `/// <reference
+  // types="node" />`를 넣어야 했는데 그 참조는 컴파일 단위 전체에 전역으로 적용된다
+  // (TypeScript는 파일 단위로 전역 타입을 스코프하지 못한다) — 즉 완전한 파일 단위 격리는
+  // TypeScript 자체의 한계로 불가능함을 확인했다.
+  // 따라서 "types": ["node"]로 전역 선언한다. 대신 src/sim, src/config는 실제로 process·console·
+  // Buffer 등 node 전역을 참조하지 않는다(grep으로 확인) — 이 파일이 지키는 격리의 실질은
+  // "타입이 보이는가"가 아니라 "sim이 실제로 I/O를 하는가"이고, 그건 위에서 밝혔듯
+  // scripts/check-boundary.mjs가 지킨다.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "outDir": "dist-sim",
+    "rootDir": "src",
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "declaration": false,
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": ["src/sim/**/*.ts", "src/config/**/*.ts", "src/tools/**/*.ts"]
+}
