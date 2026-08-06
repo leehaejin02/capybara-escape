@@ -111,6 +111,7 @@ function recolorFrame(frame, bodyKey) {
     { body: 'capy_body_01', outfit: 1, hat: 1 }, // 기본갈색 + 멜빵바지 + 밀짚모자
     { body: 'capy_body_02', outfit: 3, hat: 2 }, // 연갈색 + 우비 + 유자
     { body: 'capy_body_04', outfit: 2, hat: 3 }, // 흰색 + 수건 + 헬멧
+    { body: 'capy_body_03', outfit: 4, hat: 0 }, // 회색 + 작업복 + 모자 없음
   ];
   const w = FRAME_SIZE * 4;
   const h = FRAME_SIZE * combos.length;

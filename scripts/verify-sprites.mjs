@@ -93,9 +93,23 @@ function fail(msg) {
   failures.push(msg);
 }
 
+/**
+ * 팔레트 검사(A1)에서 제외되는 파일.
+ *
+ * 이 목록은 **코드로 생성하지 않은 에셋**만 담는다. 하나 추가할 때마다
+ * `docs/ASSET_CREDITS.md`의 "게임에 포함되는 에셋" 표에도 반드시 적어야 한다 —
+ * 여기서 조용히 빼고 출처를 안 남기면 그게 규정 위반이다(CLAUDE.md 하네스 10).
+ *
+ * - logo_title.png: 저장소 소유자가 Gemini로 생성한 타이틀 로고.
+ *   16색 팔레트는 32×32 도트 스프라이트에 적용되는 규격이고, 이 로고는
+ *   도트를 확대 렌더한 일러스트라 애초에 그 규격의 대상이 아니다.
+ */
+const PALETTE_EXEMPT = new Set(['logo_title.png']);
+
 function listPngFiles() {
   return readdirSync(ASSETS_DIR)
     .filter((f) => f.endsWith('.png'))
+    .filter((f) => !PALETTE_EXEMPT.has(f))
     .sort();
 }
 
