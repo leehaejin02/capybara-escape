@@ -7,3 +7,4 @@ dist-sim/
 .DS_Store
 .claude/settings.local.json
 sim-results/
+scripts/out/
