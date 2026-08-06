@@ -47,15 +47,19 @@ export class ResultScene extends Phaser.Scene {
       `완료 미션: ${data.completedCount}/${MISSION.REQUIRED_COUNT}`,
       `피격 횟수: ${data.hits}`,
     ];
-    this.add
-      .text(width / 2, 320, lines.join('\n'), {
-        fontFamily: 'monospace',
-        fontSize: '20px',
-        color: UI_TEXT.capyWhite,
-        align: 'center',
-        lineSpacing: 10,
-      })
-      .setOrigin(0.5);
+    // BootScene과 같은 이유로 줄마다 별도 Text로 그린다 —
+    // 한 Text + align:'center'는 한글 폴백 폰트에서 줄 내부 정렬이 어긋나 글자가 겹친다.
+    const lineHeight = 30;
+    const linesTop = 320 - ((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, i) => {
+      this.add
+        .text(width / 2, linesTop + i * lineHeight, line, {
+          fontFamily: 'monospace',
+          fontSize: '20px',
+          color: UI_TEXT.capyWhite,
+        })
+        .setOrigin(0.5);
+    });
 
     const restartText = this.add
       .text(width / 2, 460, '[ R 눌러 재시작 ]', { fontFamily: 'monospace', fontSize: '22px', color: UI_TEXT.accentAmber })

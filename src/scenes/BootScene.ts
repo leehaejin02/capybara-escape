@@ -68,16 +68,21 @@ export class BootScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    // 한 Text에 '\n'으로 넣고 align:'center'를 주면 한글이 monospace 폴백 폰트로
+    // 렌더될 때 줄 내부 정렬 계산이 어긋나 글자가 겹친다(실측: 타이틀 1행).
+    // 줄마다 별도 Text로 각자 중앙 정렬하면 그 계산 자체가 사라진다.
     const controlLines = ['이동: 방향키 / WASD', '상호작용(미션 시작): E', '대시: Shift', '제한시간 안에 미션 5개를 끝내고 탈출구로!'];
-    this.add
-      .text(width / 2, height * 0.55, controlLines.join('\n'), {
-        fontFamily: 'monospace',
-        fontSize: '16px',
-        color: UI_TEXT.capyWhite,
-        align: 'center',
-        lineSpacing: 8,
-      })
-      .setOrigin(0.5);
+    const lineHeight = 24;
+    const controlTop = height * 0.55 - ((controlLines.length - 1) * lineHeight) / 2;
+    controlLines.forEach((line, i) => {
+      this.add
+        .text(width / 2, controlTop + i * lineHeight, line, {
+          fontFamily: 'monospace',
+          fontSize: '16px',
+          color: UI_TEXT.capyWhite,
+        })
+        .setOrigin(0.5);
+    });
 
     const startText = this.add
       .text(width / 2, height * 0.82, '클릭 또는 아무 키나 눌러 시작', {
