@@ -32,7 +32,7 @@ const SPRITESHEETS: ReadonlyArray<{ key: string; frameWidth: number; frameHeight
 ];
 
 /** 프레임이 1개뿐인 단순 이미지. docs/ART.md §2.2. */
-const IMAGES: readonly string[] = ['tile_wall', 'tile_bush', 'tile_spa'];
+const IMAGES: readonly string[] = ['tile_wall', 'tile_bush', 'tile_spa', 'logo_title'];
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -58,14 +58,18 @@ export class BootScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(UI_TEXT.ink);
     const { width, height } = this.scale;
 
+    // 로고는 1376×768 원본이라 그대로 두면 캔버스를 덮는다.
+    // 폭 80% / 높이 40% 중 더 작은 배율로 맞춘다.
+    // 이 이미지는 도트를 확대 렌더한 원본이라 정수 스케일 규칙 대상이 아니다
+    // (docs/ART.md의 정수 스케일 규칙은 32×32 스프라이트에 적용된다).
+    const logo = this.add.image(width / 2, height * 0.26, 'logo_title').setOrigin(0.5);
+    logo.setScale(Math.min((width * 0.8) / logo.width, (height * 0.4) / logo.height));
+
     this.add
-      .text(width / 2, height * 0.28, 'Capybara Escape', { fontFamily: 'monospace', fontSize: '40px', color: UI_TEXT.capyWhite })
-      .setOrigin(0.5);
-    this.add
-      .text(width / 2, height * 0.38, '카피바라를 꾸미고, 고블린을 피해 미션 5개를 끝내고 탈출하라', {
+      .text(width / 2, height * 0.5, '이세계에 떨어진 카피바라. 여긴 고블린의 서식지다.', {
         fontFamily: 'monospace',
-        fontSize: '14px',
-        color: UI_TEXT.capyGrayMid,
+        fontSize: '15px',
+        color: UI_TEXT.capyWhite,
       })
       .setOrigin(0.5);
 
@@ -79,7 +83,7 @@ export class BootScene extends Phaser.Scene {
       '제한시간 안에 미션 5개를 끝내고 탈출구로!',
     ];
     const lineHeight = 24;
-    const controlTop = height * 0.55 - ((controlLines.length - 1) * lineHeight) / 2;
+    const controlTop = height * 0.68 - ((controlLines.length - 1) * lineHeight) / 2;
     controlLines.forEach((line, i) => {
       this.add
         .text(width / 2, controlTop + i * lineHeight, line, {
@@ -91,7 +95,7 @@ export class BootScene extends Phaser.Scene {
     });
 
     const startText = this.add
-      .text(width / 2, height * 0.82, '클릭 또는 아무 키나 눌러 시작', {
+      .text(width / 2, height * 0.9, '클릭 또는 아무 키나 눌러 시작', {
         fontFamily: 'monospace',
         fontSize: '18px',
         color: UI_TEXT.accentAmber,
