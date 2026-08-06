@@ -13,6 +13,7 @@ import {
   type CustomizeSelection,
 } from './spriteBake';
 import { dirRowFromFacing, ensureWalkAnims, idleFrame, walkAnimKey } from './anims';
+import { MinigameOverlay } from './minigames/MinigameOverlay';
 
 /**
  * GameScene — S3 인게임 (GDD 3장). sim의 `SimState`를 매 프레임 그리기만 한다.
@@ -21,11 +22,11 @@ import { dirRowFromFacing, ensureWalkAnims, idleFrame, walkAnimKey } from './ani
  * (CLAUDE.md 아키텍처 3). 고정 timestep(`SIM.TIMESTEP_SEC`)으로 sim을 구동하고,
  * Phaser의 가변 delta는 누적기(accumulator)로만 쓴다.
  *
- * ⚠️ 미션(§5): 시간 여유가 없어 미니게임 3종(배선/온도/기억) 대신 **"E를 누르고 서 있으면
- * 게이지가 찬다"**로 대체했다. 완료 판정은 전부 sim의 `player.missionSec`/`durationOf(type)`가
- * 하고, 이 씬은 그 비율을 막대로 그리기만 한다 — RULES.md §5.1이 이미 이 괴리(sim은 미니게임을
- * 재현하지 않는다)를 문서화해 뒀고, 이번 구현은 조작 난이도까지 0으로 만들어 그 괴리를 더 키웠다.
- * `tech` 보고 참고.
+ * 미션(§5): 미니게임 3종(M1 배선 / M2 온도 / M3 기억)은 `./minigames/`에 있고
+ * `MinigameOverlay`가 수명주기를 관리한다. 완료 판정은 여전히 sim의
+ * `player.missionSec`/`durationOf(type)`가 하고(RULES.md §5.1 — sim은 미니게임을 재현하지
+ * 않는다), 미니게임이 sim에 영향을 주는 유일한 통로는 실패 시의 "자발적 중단" 입력
+ * 1틱 주입(`overrideInput`)뿐이다. 하단 게이지는 변함없이 sim 진행도의 시각화다.
  */
 
 /** 렌더 프레임이 한 번에 따라잡을 수 있는 최대 sim 틱 수. 밸런스 값이 아니라 "탭이 백그라운드에
@@ -53,6 +54,7 @@ export class GameScene extends Phaser.Scene {
   private hpGfx!: Phaser.GameObjects.Graphics;
   private missionGaugeGfx!: Phaser.GameObjects.Graphics;
   private missionGaugeText!: Phaser.GameObjects.Text;
+  private minigames!: MinigameOverlay;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private keyW!: Phaser.Input.Keyboard.Key;
@@ -86,6 +88,7 @@ export class GameScene extends Phaser.Scene {
     this.buildPlayer();
     this.buildGoblins();
     this.buildHud();
+    this.minigames = new MinigameOverlay(this);
 
     this.cameras.main.setBounds(0, 0, WORLD.MAP_WIDTH_PX, WORLD.MAP_HEIGHT_PX);
     this.cameras.main.startFollow(this.playerSprite, true, 1, 1);
@@ -189,16 +192,20 @@ export class GameScene extends Phaser.Scene {
     const dt = SIM.TIMESTEP_SEC;
     let ticks = 0;
     while (this.accumulatorSec >= dt && ticks < MAX_TICKS_PER_FRAME && !this.state.ended) {
-      const input = this.readInput();
+      // 미니게임 실패 리셋이 예약돼 있으면 이 틱의 입력을 "자발적 중단"으로 대체한다(1회성).
+      // sim에 영향을 주는 유일한 통로가 이 공식 입력 경로다 (MinigameOverlay 주석 참조).
+      const input = this.minigames.overrideInput(this.state) ?? this.readInput();
       step(this.state, input, dt);
       this.accumulatorSec -= dt;
       ticks++;
     }
 
     this.render();
+    this.minigames.sync(this.state, this.time.now);
 
     if (this.state.ended && !this.ended) {
       this.ended = true;
+      this.minigames.teardown();
       this.scene.start('ResultScene', {
         cleared: this.state.cleared,
         lossCause: this.state.lossCause,
@@ -321,7 +328,7 @@ export class GameScene extends Phaser.Scene {
       this.missionGaugeGfx.fillRect(barX, barY, barW * ratio, barH);
 
       this.missionGaugeText.setPosition(width / 2, barY - 12);
-      this.missionGaugeText.setText(`미션 ${type} 진행 중 — 가만히 있으면 완료된다 (움직이면 취소)`);
+      this.missionGaugeText.setText(`미션 ${type} 진행 중 (이동하면 취소·진행도 초기화)`);
     } else {
       this.missionGaugeGfx.setVisible(false);
       this.missionGaugeText.setVisible(false);

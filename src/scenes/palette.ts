@@ -23,4 +23,8 @@ export const UI_HEX = {
   capyGrayMid: 0x94919e,
   capyGrayDark: 0x4e4b57,
   accentAmber: 0xf2b03c,
+  /** ART.md §1.1 idx 8 `goblin_mid`. 미니게임 UI(M2 "초록 구간", M1/M3 색 구분)용. */
+  goblinMid: 0x8fd64f,
+  /** ART.md §1.1 idx 14 `tile_spa`. 미니게임 UI(M1/M3 색 구분)용. */
+  tileSpa: 0x3e7e94,
 } as const;
