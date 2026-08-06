@@ -1,4 +1,4 @@
-import { GOBLIN, HIT, HIDING, MISSION, PLAYER, ROUND, SIM, TARGET, WORLD } from '../config/balance';
+import { GOBLIN, HIDING, HIT, MISSION, PLAYER, ROUND, SIM, TARGET, WORLD } from '../config/balance';
 import { createRng } from '../sim/rng';
 import { runEpisode } from '../sim/world';
 import type { SimResult } from '../sim/types';
@@ -8,30 +8,27 @@ import type { SimResult } from '../sim/types';
  * sim은 I/O·process·console을 몰라야 하므로, argv 파싱·stdout/stderr 출력은
  * 전부 이 파일이 담당하고 src/sim/은 순수 계산만 한다 (CLAUDE.md 아키텍처 1).
  *
- * ⚠️ 스캐폴딩 단계: 고블린 FSM·미션·충돌·승패 판정이 src/sim/에 아직 없다.
- * 이 CLI가 내는 모든 지표는 STUB이며 밸런싱 근거로 쓸 수 없다 (DECISIONS D5).
- * STUB 플래그는 게임 규칙이 실제로 구현되면 tech가 명시적으로 내린다.
+ * ── STUB 해제 근거 (2026-08-06, tech) ──
+ * 고블린 FSM(§4)·이동/충돌(§3)·시야(DDA 레이캐스트, §4.3~4.4)·미션 진행(§5)·승패 판정(§6)·
+ * 봇 정책(§7)이 전부 `src/sim/`에 실제로 구현됐고, 이 CLI가 출력하는 지표는 그 계산 결과에서
+ * 직접 나온다(하드코딩·스텁 없음). `src/sim/map.ts`·`src/sim/raycast.ts`는 모듈 로드 시(=이
+ * 파일이 `runEpisode`를 import하는 시점) 각각 맵 불변식 8항목·DDA 8케이스를 스스로 단언하며,
+ * 실패하면 이 프로세스가 시뮬 실행 전에 예외로 죽는다 — 즉 아래 결과가 출력됐다는 것 자체가
+ * 그 단언들을 통과했다는 뜻이다.
+ *
+ * ⚠️ §5.1의 알려진 괴리: sim은 미니게임을 재현하지 않고 "정해진 초 소비"로만 추상화한다.
+ * 봇은 미니게임을 항상 정확히 규정 시간에 끝낸다고 가정하므로, 실제 사람의 클리어율은
+ * 여기 나온 값보다 낮게 나올 수 있다(RULES.md §5.1).
  */
-
-/** 스캐폴딩 단계 STUB 플래그. gd/verify가 이 상수 하나로 "아직 규칙 미구현"을 판별한다. */
-const STUB = true;
-
-/**
- * `--seed` 미지정 시 기본값. balance.ts에 없는 값이다 — 밸런스 수치가 아니라
- * CLI 재현성을 위한 도구 상수이기 때문이다(속도·시야·제한시간·쿨다운이 아님).
- * `Date.now()` 금지 규칙(CLI 계약)에 따라 고정 상수로 둔다.
- */
-const DEFAULT_SEED = 20260806;
-
-const BANNER = '!! STUB — game rules not implemented. Metrics are NOT valid for balancing.';
 
 const USAGE = [
   '사용법: npm run sim -- [--runs=<int>] [--seed=<int>] [--json] [--assert]',
   '',
   '  --runs=<int>   반복 횟수 (1 이상). 기본값: SIM.DEFAULT_RUNS',
-  '  --seed=<int>   RNG 시드. 기본값: 고정 상수(재현성)',
+  '  --seed=<int>   RNG 시드. 기본값: SIM.DEFAULT_SEED(재현성)',
   '  --json         stdout에 JSON 객체 1개만 출력 (사람용 로그는 stderr)',
-  '  --assert       지표가 TARGET 합격선을 벗어나면 exit 2 (STUB인 동안은 항상 exit 2)',
+  '  --assert       exit 2 조건: (1) stuckRuns > 0 (봇 네비게이션 실패 — 밸런스 판정보다 먼저 검사)',
+  '                 (2) TARGET 합격선 미달',
 ].join('\n');
 
 interface ParsedArgs {
@@ -48,7 +45,7 @@ function printUsageAndExit(): never {
 
 function parseArgs(argv: string[]): ParsedArgs {
   let runs: number = SIM.DEFAULT_RUNS;
-  let seed: number = DEFAULT_SEED;
+  let seed: number = SIM.DEFAULT_SEED;
   let json = false;
   let assertFlag = false;
 
@@ -85,7 +82,15 @@ interface Metrics {
   avgHits: number;
   lossTimeout: number;
   lossHp0: number;
-  stub: boolean;
+  timeoutLossShare: number | null;
+  /** §8 위험#3 방어 — 60초 경과 후에도 완료 미션이 0인 판의 수. 0이어야 한다. */
+  stuckRuns: number;
+  /** §8 위험#1 방어 — steer() 3단(우회 커밋) 발동 횟수, 판당 평균/최대. */
+  avgAvoidTriggerCount: number;
+  maxAvoidTriggerCount: number;
+  /** §8 위험#1 방어 — CHASE stuckSec 임계치 도달로 SEARCH 강제 전이한 횟수, 판당 평균/최대. */
+  avgStuckAbortCount: number;
+  maxStuckAbortCount: number;
 }
 
 function simulate(runs: number, seed: number): Metrics {
@@ -100,6 +105,11 @@ function simulate(runs: number, seed: number): Metrics {
   let hitsSum = 0;
   let lossTimeout = 0;
   let lossHp0 = 0;
+  let stuckRuns = 0;
+  let avoidSum = 0;
+  let avoidMax = 0;
+  let stuckAbortSum = 0;
+  let stuckAbortMax = 0;
 
   for (const r of results) {
     hitsSum += r.hits;
@@ -111,7 +121,14 @@ function simulate(runs: number, seed: number): Metrics {
     } else if (r.lossCause === 'hp0') {
       lossHp0++;
     }
+    if (r.stuckRun) stuckRuns++;
+    avoidSum += r.avoidTriggerCount;
+    avoidMax = Math.max(avoidMax, r.avoidTriggerCount);
+    stuckAbortSum += r.stuckAbortCount;
+    stuckAbortMax = Math.max(stuckAbortMax, r.stuckAbortCount);
   }
+
+  const lossTotal = lossTimeout + lossHp0;
 
   return {
     seed,
@@ -121,7 +138,12 @@ function simulate(runs: number, seed: number): Metrics {
     avgHits: runs > 0 ? hitsSum / runs : 0,
     lossTimeout,
     lossHp0,
-    stub: STUB,
+    timeoutLossShare: lossTotal > 0 ? lossTimeout / lossTotal : null,
+    stuckRuns,
+    avgAvoidTriggerCount: runs > 0 ? avoidSum / runs : 0,
+    maxAvoidTriggerCount: avoidMax,
+    avgStuckAbortCount: runs > 0 ? stuckAbortSum / runs : 0,
+    maxStuckAbortCount: stuckAbortMax,
   };
 }
 
@@ -144,15 +166,21 @@ function printHuman(log: (line: string) => void, m: Metrics): void {
   log(`avgTimeRemaining: ${m.avgTimeRemaining.toFixed(1)}s`);
   log(`avgHits: ${m.avgHits.toFixed(2)}`);
   log(`lossCause: timeout ${m.lossTimeout} / hp0 ${m.lossHp0}`);
-  log(`stub: ${m.stub}`);
+  log(
+    `timeoutLossShare: ${m.timeoutLossShare === null ? 'n/a(패배 0건)' : `${(m.timeoutLossShare * 100).toFixed(1)}% (목표 ${(TARGET.TIMEOUT_LOSS_SHARE * 100).toFixed(0)}%, 게이트 아님·보고만)`}`
+  );
+  log(`stuckRuns: ${m.stuckRuns} (0이어야 한다 — §8 위험#3 방어)`);
+  log(
+    `avoidTriggerCount: avg ${m.avgAvoidTriggerCount.toFixed(1)} / max ${m.maxAvoidTriggerCount} (판당, §8 위험#1)`
+  );
+  log(
+    `stuckAbortCount: avg ${m.avgStuckAbortCount.toFixed(2)} / max ${m.maxStuckAbortCount} (판당, §8 위험#1)`
+  );
 }
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
   const metrics = simulate(args.runs, args.seed);
-
-  // 사람이 읽는 배너는 항상 stderr — --json 모드에서 stdout은 JSON 객체 1개여야 한다.
-  console.error(BANNER);
 
   if (args.json) {
     const balanceSnapshot = { SIM, PLAYER, HIT, GOBLIN, MISSION, HIDING, ROUND, WORLD, TARGET };
@@ -164,18 +192,26 @@ function main(): void {
       avgHits: metrics.avgHits,
       lossTimeout: metrics.lossTimeout,
       lossHp0: metrics.lossHp0,
-      stub: metrics.stub,
+      timeoutLossShare: metrics.timeoutLossShare,
+      stuckRuns: metrics.stuckRuns,
+      avgAvoidTriggerCount: metrics.avgAvoidTriggerCount,
+      maxAvoidTriggerCount: metrics.maxAvoidTriggerCount,
+      avgStuckAbortCount: metrics.avgStuckAbortCount,
+      maxStuckAbortCount: metrics.maxStuckAbortCount,
+      stub: false,
       balanceSnapshot,
     };
     console.log(JSON.stringify(jsonOutput));
   } else {
-    console.log(BANNER);
     printHuman(console.log, metrics);
   }
 
   if (args.assertFlag) {
-    // D5: STUB인 동안은 --assert가 무조건 exit 2다. 지표 판정은 STUB 해제 후에만 의미가 있다.
-    if (metrics.stub || !isWithinTarget(metrics)) {
+    // §8 위험#3: 봇이 멈춘 판이 있으면 밸런스 판정보다 먼저 실패시킨다.
+    if (metrics.stuckRuns > 0) {
+      process.exit(2);
+    }
+    if (!isWithinTarget(metrics)) {
       process.exit(2);
     }
   }

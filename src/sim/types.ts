@@ -4,28 +4,13 @@
  * Phaser의 Math.Vector2 등 Phaser 타입을 절대 재사용하지 않는다 — src/sim/은
  * Phaser를 몰라야 한다. 이 파일이 그 경계의 타입 쪽 절반이다.
  *
- * 이 규칙을 실제로 강제하는 것은 `scripts/check-boundary.mjs` **하나뿐**이다.
- * 특히 `import type { X } from 'phaser'`는 컴파일 후 사라져 런타임 카나리가
- * 절대 못 잡는다 — 타입 전용 import야말로 이 파일이 가장 조심할 형태다.
- *
- * ⚠️ 스캐폴딩 단계: 고블린 FSM·미션·충돌 상태는 아직 없다. 여기 있는 타입은
- * "그릇"이며, 실제 게임 상태 필드는 규칙이 구현될 때 추가된다.
+ * RULES.md §2~§7의 상태 필드를 그대로 옮겼다. 각 필드 옆 주석에 출처 절을 적었다.
  */
 
 /** 2D 벡터. Phaser.Math.Vector2를 대체하는 sim 자체 타입. */
 export interface Vec2 {
   x: number;
   y: number;
-}
-
-/**
- * 한 판(에피소드)의 시뮬레이션 상태.
- * 스캐폴딩 단계라 경과 시간만 갖는다. 고블린·미션·플레이어 위치 등은
- * 규칙 구현 시점에 gd/tech가 balance.ts와 함께 확장한다.
- */
-export interface SimState {
-  /** 라운드 시작 이후 경과 시간 (초). */
-  elapsedSec: number;
 }
 
 /** 한 틱에 봇/플레이어가 world에 넣는 입력. */
@@ -40,17 +25,100 @@ export interface SimInput {
   dash: boolean;
 }
 
-/** 패배 원인. 스캐폴딩 단계에서는 어떤 규칙도 판정하지 않으므로 항상 'none'이다. */
+/** 패배 원인. */
 export type LossCause = 'timeout' | 'hp0' | 'none';
 
-/** 한 판(에피소드) 시뮬레이션 결과. */
-export interface SimResult {
-  /** 탈출(승리) 여부. */
-  cleared: boolean;
-  /** 종료 시점 남은 시간 (초). */
+/** 미션 타입. §5.2/§5.5. */
+export type MissionType = 'M1' | 'M2' | 'M3';
+
+/** 고블린 FSM 상태. §4.1. GDD 6장 4상태 그대로. */
+export type GoblinFsmState = 'PATROL' | 'CHASE' | 'SEARCH' | 'ATTACK';
+
+/** 플레이어(카피바라) 런타임 상태. §3, §5.2, §6.5. */
+export interface Player {
+  pos: Vec2;
+  hp: number;
+  /**
+   * 4방향으로 양자화된 단위 벡터(§3.1). 이동 벡터 자체와는 별개이며 게임 규칙 판정(충돌·시야 등)에
+   * 쓰지 않는다 — 렌더 방향 힌트이자 §7.5 봇 FLEE 폴백("sum이 완전히 상쇄되면 -bot.facing")이 읽는 값이다.
+   * 초기값 (0,1)(아래)은 §6.5.
+   */
+  facing: Vec2;
+  invulnSec: number;
+  dashSec: number;
+  dashCooldownSec: number;
+  /** 진행 중인 미션 지점 index. 없으면 null(§5.2). */
+  missionIndex: number | null;
+  missionSec: number;
+}
+
+/** 고블린 런타임 상태. §4.1 필드 표 그대로. */
+export interface Goblin {
+  pos: Vec2;
+  state: GoblinFsmState;
+  /** 단위 벡터. 시야 판정의 기준축(§4.2). */
+  facing: Vec2;
+  /** 순찰로 인덱스(다음 목표). */
+  wpIndex: number;
+  lastSeenPos: Vec2;
+  loseSightSec: number;
+  searchSec: number;
+  attackSec: number;
+  /** 우회 커밋 방향(단위 벡터, §4.6). */
+  avoidDir: Vec2;
+  /** 우회 커밋 잔여 시간(§4.6). */
+  avoidSec: number;
+  /** CHASE 중 전진 실패 누적 시간(§4.5). */
+  stuckSec: number;
+}
+
+/** 미션 지점 런타임 상태. §5.2. */
+export interface MissionPoint {
+  index: number;
+  pos: Vec2;
+  type: MissionType;
+  /** 이번 판에 뽑혔는가(§5.6). */
+  active: boolean;
+  done: boolean;
+}
+
+/**
+ * 한 판(에피소드)의 시뮬레이션 상태.
+ * §6.5 라운드 초기 상태 + §8 위험 방어 통계 필드를 포함한다.
+ */
+export interface SimState {
+  elapsedSec: number;
   timeRemainingSec: number;
-  /** 판 동안 피격 횟수. */
+  player: Player;
+  goblins: Goblin[];
+  missions: MissionPoint[];
+  completedCount: number;
   hits: number;
-  /** 패배 원인. 승리 시 'none'. */
+  ended: boolean;
+  cleared: boolean;
   lossCause: LossCause;
+  /**
+   * §8 위험#1 방어 통계 — steer()의 3단(우회 커밋) 발동 총 횟수(이 판 전체, 고블린 3마리 합산).
+   * 비정상적으로 크면 §4.6 1단(직선 추격)이 고장 났다는 신호다.
+   */
+  avoidTriggerCount: number;
+  /** §8 위험#1 방어 통계 — CHASE의 stuckSec가 임계치에 도달해 SEARCH로 강제 이탈한 총 횟수. */
+  stuckAbortCount: number;
+}
+
+/** 한 판(에피소드) 시뮬레이션 결과. src/tools/sim-cli.ts가 집계에 쓴다. */
+export interface SimResult {
+  cleared: boolean;
+  timeRemainingSec: number;
+  hits: number;
+  lossCause: LossCause;
+  completedCount: number;
+  avoidTriggerCount: number;
+  stuckAbortCount: number;
+  /**
+   * §8 위험#3 방어 — 봇 네비게이션 실패 감지. 라운드 시작 60초가 지난 시점에도
+   * completedCount가 0이면 true. (60초는 RULES.md §8이 명시한 진단 임계값이다 —
+   * 밸런스 축이 아니라 "봇이 멈췄는가"를 재는 도구 상수이므로 balance.ts에 두지 않는다.)
+   */
+  stuckRun: boolean;
 }

@@ -1,52 +1,213 @@
-import { ROUND, SIM } from '../config/balance';
-import type { SimResult, SimState } from './types';
+import { HIDING, PLAYER, ROUND, SIM } from '../config/balance';
+import { EXIT_POINT, GOBLIN_ROUTES, MISSION_POINTS, PLAYER_START, tileCharAt } from './map';
+import { handleMissionTick, selectActiveMissions } from './mission';
+import { updateGoblin } from './goblin';
+import { moveAxisX, moveAxisY } from './movement';
+import { createBotPolicy } from './bot';
+import { normalize, sub, distSq } from './vec';
 import type { RNG } from './rng';
+import type { Goblin, MissionPoint, Player, SimInput, SimResult, SimState } from './types';
 
 /**
- * world — 상태 생성 + 고정 timestep step() 루프 골격.
- *
- * ⚠️ 스캐폴딩 단계: 고블린 FSM·미션·충돌·승패 판정이 전부 아직 없다.
- * `runEpisode()`는 정해진 시간만큼 틱을 돌리고 끝날 뿐, 어떤 규칙도 판정하지 않는다.
- * 그 결과 모든 판이 "판정 없음"(cleared: false, lossCause: 'none')으로 끝난다 —
- * 이게 정상이다. 게임 규칙이 들어오기 전까지 이 결과를 밸런스 근거로 쓰지 마라
- * (docs/DECISIONS.md "playtest 명시적 생략" 참조).
+ * world — 상태 생성 + 고정 timestep `step()` + 승패 판정. RULES.md §3, §5, §6 구현.
  *
  * ── timestep 소스 ──
  * `SIM.TICKS_PER_SEC`와 `SIM.TIMESTEP_SEC` 둘 다 balance.ts에 있으나(파생식 금지 규칙 때문에
- * 서로 어긋날 수 있다), 이 sim은 **`SIM.TIMESTEP_SEC`만을 진실로 삼는다**. `TICKS_PER_SEC`는
- * 여기서 참조하지 않는다.
+ * 서로 어긋날 수 있다), 이 sim은 **`SIM.TIMESTEP_SEC`만을 진실로 삼는다**.
+ *
+ * `stuckRun`(§8 위험#3 방어) 판정 기준 60초는 RULES.md §8이 명시한 진단 임계값이다.
+ * 밸런스 축이 아니라 "봇이 멈췄는가"를 재는 도구 상수이므로 balance.ts에 두지 않는다.
  */
+const STUCK_CHECK_SEC = 60;
 
-/** 한 판 시작 시점의 초기 상태를 만든다. */
-export function createInitialState(): SimState {
+const P_HW = PLAYER.HITBOX_W_PX / 2;
+const P_HH = PLAYER.HITBOX_H_PX / 2;
+
+/**
+ * §3.1: moveX/moveY(입력 의도)로부터 4방향 단위 벡터로 양자화해 `player.facing`에 보관한다.
+ * 게임 규칙 판정(충돌·시야 등)에는 쓰지 않는다 — 렌더 힌트 + §7.5 봇 FLEE 폴백 전용.
+ * 입력이 0에 가까우면(정지) 이전 값을 그대로 유지한다.
+ */
+function updatePlayerFacing(player: Player, moveX: number, moveY: number): void {
+  const len = Math.hypot(moveX, moveY);
+  if (len < 1e-6) return;
+  if (Math.abs(moveX) >= Math.abs(moveY)) {
+    player.facing = moveX > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 };
+  } else {
+    player.facing = moveY > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 };
+  }
+}
+
+/** §3.2~§3.4: 대시 발동 판단 + 속도 벡터 계산 + 축별 분리 충돌 해결. */
+function movePlayer(player: Player, input: SimInput, dt: number): void {
+  if (input.dash && player.dashCooldownSec <= 0 && player.dashSec <= 0) {
+    player.dashSec = PLAYER.DASH_DURATION_SEC;
+    player.dashCooldownSec = PLAYER.DASH_COOLDOWN_SEC;
+  }
+
+  const speed = player.dashSec > 0 ? PLAYER.DASH_SPEED_PX_PER_SEC : PLAYER.BASE_SPEED_PX_PER_SEC;
+  const len = Math.hypot(input.moveX, input.moveY);
+  let vx = 0;
+  let vy = 0;
+  if (len >= 1e-6) {
+    vx = (input.moveX / len) * speed;
+    vy = (input.moveY / len) * speed;
+  }
+
+  updatePlayerFacing(player, input.moveX, input.moveY);
+  moveAxisX(player.pos, vx * dt, P_HW, P_HH);
+  moveAxisY(player.pos, vy * dt, P_HW, P_HH);
+}
+
+/** §6.2: 온천(S) 위에 있으면 시간 배속. HIDING.ENABLED === false(MUST 스코프)면 항상 1배. */
+function computeTimeScale(player: Player): number {
+  if (HIDING.ENABLED && tileCharAt(player.pos) === 'S') return HIDING.SPA_TIME_SCALE;
+  return HIDING.DEFAULT_TIME_SCALE;
+}
+
+/** §6.4. 순서 고정: hp0 → timeout → 탈출. */
+function checkEnd(state: SimState): void {
+  if (state.player.hp <= 0) {
+    state.ended = true;
+    state.cleared = false;
+    state.lossCause = 'hp0';
+    return;
+  }
+  if (state.timeRemainingSec <= 0) {
+    state.ended = true;
+    state.cleared = false;
+    state.lossCause = 'timeout';
+    return;
+  }
+  const exitOpen = state.completedCount >= ROUND.EXIT_OPENS_AT_MISSIONS;
+  if (exitOpen && distSq(state.player.pos, EXIT_POINT) <= ROUND.EXIT_REACH_RADIUS_PX * ROUND.EXIT_REACH_RADIUS_PX) {
+    state.ended = true;
+    state.cleared = true;
+    state.lossCause = 'none';
+  }
+}
+
+/** §6.5 라운드 초기 상태. */
+export function createInitialState(rng: RNG): SimState {
+  const missions: MissionPoint[] = MISSION_POINTS.map((m) => ({
+    index: m.index,
+    pos: m.pos,
+    type: m.type,
+    active: false,
+    done: false,
+  }));
+  selectActiveMissions(missions, rng);
+
+  const goblins: Goblin[] = GOBLIN_ROUTES.map((route) => {
+    const start = route[0];
+    const nextWp = route[1];
+    const facing = normalize(sub(nextWp, start));
+    return {
+      pos: { x: start.x, y: start.y },
+      state: 'PATROL',
+      facing,
+      wpIndex: 1,
+      lastSeenPos: { x: start.x, y: start.y },
+      loseSightSec: 0,
+      searchSec: 0,
+      attackSec: 0,
+      avoidDir: { x: 0, y: 0 },
+      avoidSec: 0,
+      stuckSec: 0,
+    };
+  });
+
+  const player: Player = {
+    pos: { x: PLAYER_START.x, y: PLAYER_START.y },
+    hp: PLAYER.MAX_HP,
+    facing: { x: 0, y: 1 }, // §6.5: 아래. 시작 방에서 위로 나가지만 판정에 안 쓴다
+    invulnSec: 0,
+    dashSec: 0,
+    dashCooldownSec: 0,
+    missionIndex: null,
+    missionSec: 0,
+  };
+
   return {
     elapsedSec: 0,
+    timeRemainingSec: ROUND.TIME_LIMIT_SEC,
+    player,
+    goblins,
+    missions,
+    completedCount: 0,
+    hits: 0,
+    ended: false,
+    cleared: false,
+    lossCause: 'none',
+    avoidTriggerCount: 0,
+    stuckAbortCount: 0,
   };
 }
 
-/** 상태를 한 틱(`dtSec`) 만큼 전진시킨다. 스캐폴딩 단계라 경과 시간만 갱신한다. */
-export function step(state: SimState, dtSec: number): void {
-  state.elapsedSec += dtSec;
+/** §6.1 한 틱의 실행 순서. 순서를 바꾸면 같은 시드가 다른 결과를 낸다. */
+export function step(state: SimState, input: SimInput, dt: number): void {
+  if (state.ended) return;
+
+  // 1. 타이머 감소
+  state.player.invulnSec = Math.max(0, state.player.invulnSec - dt);
+  state.player.dashSec -= dt;
+  state.player.dashCooldownSec -= dt;
+
+  // 2. 입력은 호출부(runEpisode)가 이미 결정해 넘겨준다
+
+  // 3. 미션 로직
+  const cancelledThisTick = handleMissionTick(state, input, dt);
+
+  // 4. 플레이어 이동 — 미션 중이면(또는 이번 틱 자발적 중단이면) 건너뛴다
+  const skipMovement = cancelledThisTick || state.player.missionIndex !== null;
+  if (!skipMovement) {
+    movePlayer(state.player, input, dt);
+  }
+
+  // 5. 고블린 갱신 — index 0 → 1 → 2 순서 고정
+  for (let i = 0; i < state.goblins.length; i++) {
+    updateGoblin(state, i, dt);
+  }
+
+  // 6. 시간 감소
+  state.timeRemainingSec -= dt * computeTimeScale(state.player);
+
+  // 7. 종료 판정
+  checkEnd(state);
+
+  // 8. 경과 시간
+  state.elapsedSec += dt;
 }
 
-/**
- * 한 판(에피소드)을 끝까지 시뮬레이션한다.
- * 제한시간(`ROUND.TIME_LIMIT_SEC`)만큼 고정 timestep으로 틱을 돌린 뒤 종료한다.
- * `rng`는 봇/난수 배치가 sim에 들어올 때 쓰기 위해 시그니처에 이미 반영해 둔다
- * (스캐폴딩 단계에서는 사용하지 않는다).
- */
-export function runEpisode(_rng: RNG): SimResult {
-  const state = createInitialState();
-  const totalTicks = Math.round(ROUND.TIME_LIMIT_SEC / SIM.TIMESTEP_SEC);
+/** 한 판(에피소드)을 끝까지 시뮬레이션한다. `rng`는 미션 선정(§5.6)과 봇 정책(§7)이 공유한다. */
+export function runEpisode(rng: RNG): SimResult {
+  const state = createInitialState(rng);
+  const bot = createBotPolicy();
+  const dt = SIM.TIMESTEP_SEC;
+  // 안전 상한: timeRemainingSec가 정상적으로 0 이하가 되기까지 필요한 틱 수 + 여유.
+  // timeScale은 항상 >= HIDING.DEFAULT_TIME_SCALE(1)이므로 이보다 더 걸릴 수 없다.
+  const maxTicks = Math.round(ROUND.TIME_LIMIT_SEC / dt) + 10;
 
-  for (let i = 0; i < totalTicks; i++) {
-    step(state, SIM.TIMESTEP_SEC);
+  let stuckRun = false;
+  let checked60 = false;
+
+  for (let i = 0; i < maxTicks && !state.ended; i++) {
+    const input = bot.decide(state, rng);
+    step(state, input, dt);
+    if (!checked60 && state.elapsedSec >= STUCK_CHECK_SEC) {
+      checked60 = true;
+      stuckRun = state.completedCount === 0;
+    }
   }
 
   return {
-    cleared: false,
-    timeRemainingSec: Math.max(ROUND.TIME_LIMIT_SEC - state.elapsedSec, 0),
-    hits: 0,
-    lossCause: 'none',
+    cleared: state.cleared,
+    timeRemainingSec: Math.max(state.timeRemainingSec, 0),
+    hits: state.hits,
+    lossCause: state.lossCause,
+    completedCount: state.completedCount,
+    avoidTriggerCount: state.avoidTriggerCount,
+    stuckAbortCount: state.stuckAbortCount,
+    stuckRun,
   };
 }
