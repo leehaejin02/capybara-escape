@@ -64,8 +64,8 @@
 |---|---|---|---|
 | `#` | 벽 | ❌ | 유일한 solid 타일 |
 | `.` | 바닥 | ✅ | |
-| `B` | 수풀 | ✅ | **MUST 스코프에선 바닥과 동일.** `HIDING.ENABLED`용 자리 |
-| `S` | 온천 | ✅ | **MUST 스코프에선 바닥과 동일.** `HIDING.ENABLED`용 자리 |
+| `B` | 수풀 | ✅ | **은신처.** 2026-08-07 `HIDING.ENABLED = true` → 고블린 감지에서 제외된다 (§4.3 5단계) |
+| `S` | 온천 | ✅ | **은신처 + 시간 2배.** 2026-08-07 활성화 (§4.3 5단계, §6.2) |
 | `M` | 미션 지점 | ✅ | 바닥 + 미션 앵커 |
 | `E` | 탈출구 | ✅ | 바닥 + 탈출 앵커 |
 | `P` | 플레이어 시작 | ✅ | 바닥 |
@@ -703,8 +703,12 @@ timeScale = (HIDING.ENABLED && 플레이어 중심 타일이 'S') ? HIDING.SPA_T
 timeRemainingSec -= dt * timeScale
 ```
 
-`HIDING.ENABLED == false`(MUST 스코프)에서는 항상 `DEFAULT_TIME_SCALE`(=1)이다.
+`HIDING.ENABLED == false`에서는 항상 `DEFAULT_TIME_SCALE`(=1)이다.
 즉 **이 한 줄만 미리 써 두면 은신 승격 시 추가 작업이 없다.** 미리 쓰는 비용이 0에 가까워서 지금 넣는다.
+
+> ✅ **2026-08-07: 실제로 그렇게 됐다.** 은신이 MUST로 승격되고 `HIDING.ENABLED`가 `true`가 됐을 때
+> **sim 코드는 한 줄도 바뀌지 않았다.** 이 문단이 그 예측의 근거였고 예측이 맞았다.
+> (`docs/DECISIONS.md` D9-d — GDD 12장이 적어 둔 "구현 비용이 크다"는 전제는 틀렸었다.)
 
 ### §6.3 피격 처리 — 순서 고정 (§4.7 ATTACK 진입 시 1회)
 
