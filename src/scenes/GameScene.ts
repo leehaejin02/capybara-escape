@@ -5,6 +5,7 @@ import { createInitialState, step } from '../sim/world';
 import { EXIT_POINT, MAP_ROWS, MISSION_POINTS } from '../sim/map';
 import type { MissionType, SimInput, SimState, Vec2 } from '../sim/types';
 import { UI_HEX, UI_TEXT } from './palette';
+import { playSfx } from '../audio/bgm';
 import {
   DEFAULT_SELECTION,
   PLAYER_TEXTURE_KEY,
@@ -41,6 +42,9 @@ export class GameScene extends Phaser.Scene {
   private state!: SimState;
   private accumulatorSec = 0;
   private ended = false;
+  /** 효과음용 이전 틱 값. sim 상태의 '변화'를 감지하는 용도일 뿐 판정에 쓰지 않는다. */
+  private prevHits = 0;
+  private prevCompleted = 0;
 
   private playerSprite!: Phaser.GameObjects.Sprite;
   private goblinSprites: Phaser.GameObjects.Sprite[] = [];
@@ -74,6 +78,8 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.ended = false;
     this.accumulatorSec = 0;
+    this.prevHits = 0;
+    this.prevCompleted = 0;
 
     // 헤드리스 시뮬(§7 봇)과 달리 실제 플레이는 매 판 다른 미션 배치를 원한다.
     // 시드는 밸런스 수치가 아니라 "이번 판을 재현 가능하게 만드는 값"일 뿐이다.
@@ -203,8 +209,15 @@ export class GameScene extends Phaser.Scene {
     this.render();
     this.minigames.sync(this.state, this.time.now);
 
+    // 효과음은 sim 상태의 '변화'만 보고 낸다. 씬이 판정에 관여하지 않는다.
+    if (this.state.hits > this.prevHits) playSfx('hit');
+    if (this.state.completedCount > this.prevCompleted) playSfx('missionComplete');
+    this.prevHits = this.state.hits;
+    this.prevCompleted = this.state.completedCount;
+
     if (this.state.ended && !this.ended) {
       this.ended = true;
+      if (this.state.cleared) playSfx('escape');
       this.minigames.teardown();
       this.scene.start('ResultScene', {
         cleared: this.state.cleared,

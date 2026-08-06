@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { UI_TEXT } from './palette';
+import { startBgm } from '../audio/bgm';
 
 /**
  * BootScene — 에셋 프리로드 + S1 타이틀 화면(GDD 3장).
@@ -71,7 +72,12 @@ export class BootScene extends Phaser.Scene {
     // 한 Text에 '\n'으로 넣고 align:'center'를 주면 한글이 monospace 폴백 폰트로
     // 렌더될 때 줄 내부 정렬 계산이 어긋나 글자가 겹친다(실측: 타이틀 1행).
     // 줄마다 별도 Text로 각자 중앙 정렬하면 그 계산 자체가 사라진다.
-    const controlLines = ['이동: 방향키 / WASD', '상호작용(미션 시작): E', '대시: Shift', '제한시간 안에 미션 5개를 끝내고 탈출구로!'];
+    const controlLines = [
+      '이동: 방향키 / WASD',
+      '상호작용(미션 시작): E',
+      '대시: Shift · 음소거: M',
+      '제한시간 안에 미션 5개를 끝내고 탈출구로!',
+    ];
     const lineHeight = 24;
     const controlTop = height * 0.55 - ((controlLines.length - 1) * lineHeight) / 2;
     controlLines.forEach((line, i) => {
@@ -95,6 +101,9 @@ export class BootScene extends Phaser.Scene {
     this.tweens.add({ targets: startText, alpha: 0.3, duration: 700, yoyo: true, repeat: -1 });
 
     const start = (): void => {
+      // 브라우저 자동재생 정책상 AudioContext는 사용자 제스처 핸들러 안에서
+      // 동기적으로 시작해야 한다. 이 핸들러가 게임 전체에서 첫 제스처다.
+      startBgm();
       this.scene.start('CustomizeScene');
     };
     this.input.once('pointerdown', start);
