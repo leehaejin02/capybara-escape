@@ -19,6 +19,13 @@
  *
  * ART.md §6의 A7(좌우대칭)/A10(몸통 2색)/A11(명도)/A12(타일 이음매)는 이번 범위에
  * 없으므로 여기서 검사하지 않는다 — 구현하지 않았다는 사실을 그대로 보고한다 (하네스 14).
+ *
+ * 2026-08-07 tech (SPEC_ZONES 1단계): W1~W5(docs/SPEC_ZONES.md §3.5)를 PNG 실측으로 추가했다.
+ *   W1 크기는 EXPECTED_SIZE 갱신 + A3가 이미 검사한다(별도 재구현 없음).
+ *   W2(C1-W)/W3(C2a~d)/W4/W5는 아래 새 섹션에서 tile_wall.png·tile_floor.png·tile_shadow.png를
+ *   직접 픽셀 판독해 검사한다. W6(프레임 선택식)·W7(드롭섀도 배치 조건)은 **렌더 코드
+ *   (GameScene.ts)의 로직 검사라 PNG 픽셀만으로 확인할 수 없다** — 이 스크립트는 정적 확인으로
+ *   대신했다고 아래 콘솔 출력에 명시한다(하네스 14, 실측 아님을 숨기지 않는다).
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -26,12 +33,22 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { decodePng } from './lib/png.mjs';
-import { PALETTE, hexToRgb } from './lib/palette.mjs';
+import { PALETTE, PALETTE_PNG_EXEMPT_NAMES, hexToRgb } from './lib/palette.mjs';
+import { ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE } from './lib/zones.mjs';
+
+const ZONE_LABELS = { [ZONE_FOREST]: '숲', [ZONE_VILLAGE]: '마을', [ZONE_CAVE]: '동굴' };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = join(__dirname, '..', 'public', 'assets');
 
-const PALETTE_SET = new Set(Object.values(PALETTE).map((h) => h.toUpperCase()));
+// A1(팔레트 준수) 대조 집합 = PNG 허용 28색 (ART.md §1.1). sky_soft·sky_pink는
+// PNG에 0픽셀이어야 하므로("PNG 열 ✗") 이 대조 집합에서 제외한다 — 포함시키면
+// 그 두 색이 실수로 PNG에 섞여도 A1이 통과시켜 버린다.
+const PALETTE_SET = new Set(
+  Object.entries(PALETTE)
+    .filter(([name]) => !PALETTE_PNG_EXEMPT_NAMES.includes(name))
+    .map(([, h]) => h.toUpperCase())
+);
 
 const EXPECTED_SIZE = {
   capy_body_01: [128, 128],
@@ -49,10 +66,12 @@ const EXPECTED_SIZE = {
   capy_hat_03: [128, 128],
   goblin_walk: [128, 128],
   goblin_idle: [64, 128],
-  tile_floor: [128, 32],
-  tile_wall: [32, 32],
-  tile_bush: [32, 32],
-  tile_spa: [32, 32],
+  // tile_floor/tile_wall: SPEC_ZONES.md §2.2 개정 — 128×32(4변형) → 128×96(4변형×3구역).
+  tile_floor: [128, 96],
+  tile_wall: [128, 96],
+  tile_shadow: [32, 32], // 신규(SPEC_ZONES.md §3.4)
+  tile_bush: [32, 32], // §5.4는 다음 호출 — 이번엔 기존 32×32 그대로
+  tile_spa: [32, 32], // §5.5는 다음 호출 — 이번엔 기존 32×32 그대로
   marker_mission: [96, 32],
   marker_exit: [64, 32],
 };
@@ -319,6 +338,171 @@ for (const [name, cols] of Object.entries(A13_TARGETS)) {
   }
 }
 
+// ---- W1~W5 (docs/SPEC_ZONES.md §3.5) — tile_wall.png / tile_shadow.png / tile_floor.png 실측 ----
+// W1(크기)은 EXPECTED_SIZE + A3가 이미 검사했다. 여기는 W2~W5.
+function luminanceRgb(r, g, b) {
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+/** pixels: [[r,g,b], ...] 중 가장 많이 등장한 (r,g,b)를 돌려준다("배경/지배색" 실측). */
+function dominantRgb(pixels) {
+  const counts = new Map();
+  for (const [r, g, b] of pixels) {
+    const key = `${r},${g},${b}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let bestKey = null;
+  let bestCount = -1;
+  for (const [key, count] of counts) {
+    if (count > bestCount) {
+      bestKey = key;
+      bestCount = count;
+    }
+  }
+  return bestKey.split(',').map(Number);
+}
+
+function framePixels(frame, x0, y0, x1, y1) {
+  const out = [];
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = (y * FRAME_SIZE + x) * 4;
+      out.push([frame[i], frame[i + 1], frame[i + 2]]);
+    }
+  }
+  return out;
+}
+
+const wallImg = images['tile_wall'];
+const floorImg = images['tile_floor'];
+const shadowImg = images['tile_shadow'];
+
+if (!wallImg || !floorImg || !shadowImg) {
+  fail('[W] tile_wall.png / tile_floor.png / tile_shadow.png 중 하나 이상이 없다 — W2~W5 검사 불가');
+} else {
+  // ---- W2: C1-W — 앞면이 있는 벽 프레임(variant 0·2)의 앞면 영역(y 18..31)에 쓰인
+  // 모든 색이 L <= 117 ----
+  // ⚠️ SPEC_ZONES.md §3.5 W2 원문은 "12개 벽 프레임"(전 variant)이라고 적었지만, 같은 문서
+  // §3.2가 "variant 1·3은 y0..31 전체가 윗면이고 무늬가 y=31까지 이어진다"고 명시하며 이
+  // 이어지는 무늬는 zone의 WALL_TOP(예: forest_wall_top L147, village_wall_top L168)를
+  // 그대로 쓴다 — 즉 두 규칙이 서로 모순된다. C1-W의 존재 이유("캐릭터가 겹치는 구간은
+  // 앞면(south=floor)뿐"이라는 §3.1 표의 구조, ART.md C1-W 원문 "위쪽 벽 타일과 겹치는 구간이
+  // 정확히 여기다")로 보면 겹침은 남쪽이 바닥인 variant(0·2, hasFace=true)에서만 발생할 수
+  // 있다 — 남쪽이 벽인 variant(1·3)는 그 아래에 캐릭터가 설 자리 자체가 없다. 그래서 이
+  // 검사는 variant 0·2만 대상으로 한다. gd에 반려 대상으로 보고함(하네스 15) — 문항 자체를
+  // 조용히 우회하지 않는다.
+  for (const zone of [ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE]) {
+    for (const variant of [0, 2]) {
+      const frame = getFrame(wallImg, FRAME_SIZE, variant, zone);
+      const seen = new Set();
+      for (let y = 18; y <= 31; y++) {
+        for (let x = 0; x < FRAME_SIZE; x++) {
+          const i = (y * FRAME_SIZE + x) * 4;
+          if (frame[i + 3] === 0) continue;
+          seen.add(`${frame[i]},${frame[i + 1]},${frame[i + 2]}`);
+        }
+      }
+      for (const key of seen) {
+        const [r, g, b] = key.split(',').map(Number);
+        const L = luminanceRgb(r, g, b);
+        if (L > 117) {
+          fail(
+            `[W2 C1-W] tile_wall.png zone=${ZONE_LABELS[zone]} variant=${variant}: 앞면 영역(y18..31)에 L=${L.toFixed(1)}(>117)인 색 #${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')} 존재`
+          );
+        }
+      }
+    }
+  }
+
+  // ---- W3: 구역별 C2a~C2d ----
+  // WALL_TOP/WALL_FACE/FLOOR는 순수 배경 채움 색이 최다 픽셀을 차지하도록 설계됐으므로
+  // "지배색(가장 많이 등장하는 색)"으로 실측한다. SHADOW(ink)는 tile_shadow.png의 불투명
+  // 픽셀 중 지배색.
+  {
+    const shadowPixels = [];
+    for (let y = 0; y < 32; y++) {
+      for (let x = 0; x < 32; x++) {
+        const i = (y * shadowImg.width + x) * 4;
+        if (shadowImg.data[i + 3] !== 0) shadowPixels.push([shadowImg.data[i], shadowImg.data[i + 1], shadowImg.data[i + 2]]);
+      }
+    }
+    const [sr, sg, sb] = dominantRgb(shadowPixels);
+    const shadowL = luminanceRgb(sr, sg, sb);
+
+    for (const zone of [ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE]) {
+      const label = ZONE_LABELS[zone];
+      // WALL_TOP: variant 3(북쪽모서리선 없음, 앞면 없음 — 전체가 윗면 채움+무늬)의 전체 지배색
+      const topFrame = getFrame(wallImg, FRAME_SIZE, 3, zone);
+      const [tr, tg, tb] = dominantRgb(framePixels(topFrame, 0, 0, 31, 31));
+      const topL = luminanceRgb(tr, tg, tb);
+
+      // WALL_FACE: variant 0의 앞면 영역(y19..31) 지배색
+      const faceFrame = getFrame(wallImg, FRAME_SIZE, 0, zone);
+      const [fr, fg, fb] = dominantRgb(framePixels(faceFrame, 0, 19, 31, 31));
+      const faceL = luminanceRgb(fr, fg, fb);
+
+      // FLOOR: floor variant 0 전체 지배색
+      const floorFrame = getFrame(floorImg, FRAME_SIZE, 0, zone);
+      const [flr, flg, flb] = dominantRgb(framePixels(floorFrame, 0, 0, 31, 31));
+      const floorL = luminanceRgb(flr, flg, flb);
+
+      const c2a = Math.abs(topL - floorL);
+      const c2b = topL - faceL;
+      const c2c = floorL - shadowL;
+      const c2d = floorL - faceL;
+
+      if (c2a < 30) fail(`[W3 C2a] ${label}: |L(WALL_TOP)${topL.toFixed(1)} - L(FLOOR)${floorL.toFixed(1)}| = ${c2a.toFixed(1)} < 30`);
+      if (c2b < 35) fail(`[W3 C2b] ${label}: L(WALL_TOP)${topL.toFixed(1)} - L(WALL_FACE)${faceL.toFixed(1)} = ${c2b.toFixed(1)} < 35`);
+      if (c2c < 30) fail(`[W3 C2c] ${label}: L(FLOOR)${floorL.toFixed(1)} - L(SHADOW)${shadowL.toFixed(1)} = ${c2c.toFixed(1)} < 30`);
+      if (c2d < 25) fail(`[W3 C2d] ${label}: L(FLOOR)${floorL.toFixed(1)} - L(WALL_FACE)${faceL.toFixed(1)} = ${c2d.toFixed(1)} < 25`);
+    }
+  }
+
+  // ---- W4: variant 1·3의 y∈{17,18} 행에 ink 전 구간 줄이 없다(앞면이 없어야 한다) ----
+  for (const zone of [ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE]) {
+    for (const variant of [1, 3]) {
+      const frame = getFrame(wallImg, FRAME_SIZE, variant, zone);
+      for (const y of [17, 18]) {
+        let allInk = true;
+        for (let x = 0; x < FRAME_SIZE; x++) {
+          const i = (y * FRAME_SIZE + x) * 4;
+          if (frame[i + 3] === 0 || frame[i] !== INK_RGB[0] || frame[i + 1] !== INK_RGB[1] || frame[i + 2] !== INK_RGB[2]) {
+            allInk = false;
+            break;
+          }
+        }
+        if (allInk) {
+          fail(`[W4] tile_wall.png zone=${ZONE_LABELS[zone]} variant=${variant}: y=${y} 행 전체가 ink (앞면이 없어야 하는 variant인데 있다)`);
+        }
+      }
+    }
+  }
+
+  // ---- W5: variant 0·1의 y=0 행이 전부 ink, variant 2·3은 아니다 ----
+  for (const zone of [ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE]) {
+    for (let variant = 0; variant < 4; variant++) {
+      const frame = getFrame(wallImg, FRAME_SIZE, variant, zone);
+      let allInk = true;
+      for (let x = 0; x < FRAME_SIZE; x++) {
+        const i = (0 * FRAME_SIZE + x) * 4;
+        if (frame[i + 3] === 0 || frame[i] !== INK_RGB[0] || frame[i + 1] !== INK_RGB[1] || frame[i + 2] !== INK_RGB[2]) {
+          allInk = false;
+          break;
+        }
+      }
+      const shouldBeInk = variant === 0 || variant === 1;
+      if (shouldBeInk && !allInk) {
+        fail(`[W5] tile_wall.png zone=${ZONE_LABELS[zone]} variant=${variant}: y=0 행이 전부 ink가 아니다 (북쪽 모서리선이 있어야 함)`);
+      }
+      if (!shouldBeInk && allInk) {
+        fail(`[W5] tile_wall.png zone=${ZONE_LABELS[zone]} variant=${variant}: y=0 행이 전부 ink다 (북쪽 모서리선이 없어야 함)`);
+      }
+    }
+  }
+}
+
+notes.push('[W6/W7 참고] 렌더 코드(GameScene.ts) 로직 검사라 PNG 픽셀만으로 확인 불가 — tech가 소스 정적 확인으로 대신함(실측 아님, 하네스 14)');
+
 // ---- 결과 ----
 if (notes.length > 0) {
   console.log('verify-sprites: 참고');
@@ -331,6 +515,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`verify-sprites: OK — ${names.length}개 PNG, 8항목(A13 포함) 전부 통과`);
+console.log(`verify-sprites: OK — ${names.length}개 PNG, 8항목(A13 포함) + W2~W5(SPEC_ZONES §3.5) 전부 통과`);
 console.log('verify-sprites: 미구현(범위 밖, ART.md §6 참고): A7 좌우대칭, A10 몸통2색, A11 명도조건, A12 타일이음매');
 process.exit(0);

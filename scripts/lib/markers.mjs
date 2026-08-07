@@ -75,7 +75,8 @@ function buildExitFrame(borderColor, insideColor) {
 }
 
 export function buildExitFrameIndex(frame) {
-  if (frame === 0) return buildExitFrame('capy_gray_dark', 'tile_wall'); // 닫힘
+  // 'tile_wall' -> 'cave_wall_face' 개명(ART.md §1.1 각주). hex는 동일(#2A2636)이라 그림은 안 바뀐다.
+  if (frame === 0) return buildExitFrame('capy_gray_dark', 'cave_wall_face'); // 닫힘
   if (frame === 1) return buildExitFrame('accent_amber', 'capy_white'); // 열림
   throw new Error(`buildExitFrameIndex: 알 수 없는 프레임 ${frame}`);
 }

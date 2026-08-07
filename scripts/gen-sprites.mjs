@@ -21,9 +21,10 @@ import {
   buildGoblinIdleRightFrame,
 } from './lib/goblin.mjs';
 import { buildOutfitFrame, buildHatFrame } from './lib/overlays.mjs';
-import { buildFloorVariant, buildWall, buildBush, buildSpa } from './lib/tiles.mjs';
+import { buildFloorVariant, buildWallVariant, buildShadow, buildBush, buildSpa } from './lib/tiles.mjs';
 import { buildMissionFrame, buildExitFrameIndex } from './lib/markers.mjs';
 import { recolorBuffer, BODY_RECOLOR_MAPS } from './lib/recolor.mjs';
+import { ZONE_COUNT } from './lib/zones.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -126,12 +127,24 @@ const goblinIdleSheet = buildIdleSheet(buildGoblinIdleDownFrame, buildGoblinIdle
 savePng('goblin_idle', FRAME_SIZE * 2, FRAME_SIZE * 4, goblinIdleSheet);
 
 // ============ tiles ============
+// tile_floor / tile_wall: 128×96 = 4변형(col) × 3구역(row). frameIndex = zone*4 + variant
+// (SPEC_ZONES.md §2.2 "row는 방향이 아니라 구역" 규약. §5.4 수풀·§5.5 온천은 다음 호출이라
+// tile_bush/tile_spa는 이번엔 기존 32×32 단일 프레임 그대로 둔다.)
 {
-  const sheet = createCanvas(FRAME_SIZE * 4, FRAME_SIZE);
-  for (let v = 0; v < 4; v++) blitFrame(sheet, FRAME_SIZE * 4, buildFloorVariant(v), v, 0);
-  savePng('tile_floor', FRAME_SIZE * 4, FRAME_SIZE, sheet);
+  const sheet = createCanvas(FRAME_SIZE * 4, FRAME_SIZE * ZONE_COUNT);
+  for (let zone = 0; zone < ZONE_COUNT; zone++) {
+    for (let v = 0; v < 4; v++) blitFrame(sheet, FRAME_SIZE * 4, buildFloorVariant(zone, v), v, zone);
+  }
+  savePng('tile_floor', FRAME_SIZE * 4, FRAME_SIZE * ZONE_COUNT, sheet);
 }
-savePng('tile_wall', FRAME_SIZE, FRAME_SIZE, buildWall());
+{
+  const sheet = createCanvas(FRAME_SIZE * 4, FRAME_SIZE * ZONE_COUNT);
+  for (let zone = 0; zone < ZONE_COUNT; zone++) {
+    for (let v = 0; v < 4; v++) blitFrame(sheet, FRAME_SIZE * 4, buildWallVariant(zone, v), v, zone);
+  }
+  savePng('tile_wall', FRAME_SIZE * 4, FRAME_SIZE * ZONE_COUNT, sheet);
+}
+savePng('tile_shadow', FRAME_SIZE, FRAME_SIZE, buildShadow());
 savePng('tile_bush', FRAME_SIZE, FRAME_SIZE, buildBush());
 savePng('tile_spa', FRAME_SIZE, FRAME_SIZE, buildSpa());
 

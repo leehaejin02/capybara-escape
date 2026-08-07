@@ -26,13 +26,16 @@ const SPRITESHEETS: ReadonlyArray<{ key: string; frameWidth: number; frameHeight
   { key: 'capy_hat_03', frameWidth: 32, frameHeight: 32 },
   { key: 'goblin_walk', frameWidth: 32, frameHeight: 32 },
   { key: 'goblin_idle', frameWidth: 32, frameHeight: 32 },
+  // tile_floor/tile_wall: SPEC_ZONES.md §2.2 — 128×96 = 4변형(col) × 3구역(row).
+  // frameIndex = zone*4 + variant (row-major 스프라이트시트 인덱싱이 그대로 이 식이 된다).
   { key: 'tile_floor', frameWidth: 32, frameHeight: 32 },
+  { key: 'tile_wall', frameWidth: 32, frameHeight: 32 },
   { key: 'marker_mission', frameWidth: 32, frameHeight: 32 },
   { key: 'marker_exit', frameWidth: 32, frameHeight: 32 },
 ];
 
-/** 프레임이 1개뿐인 단순 이미지. docs/ART.md §2.2. */
-const IMAGES: readonly string[] = ['tile_wall', 'tile_bush', 'tile_spa', 'logo_title'];
+/** 프레임이 1개뿐인 단순 이미지. docs/ART.md §2.2, SPEC_ZONES.md §3.4(tile_shadow 신규). */
+const IMAGES: readonly string[] = ['tile_shadow', 'tile_bush', 'tile_spa', 'logo_title'];
 
 export class BootScene extends Phaser.Scene {
   constructor() {

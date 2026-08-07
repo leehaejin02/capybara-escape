@@ -5,6 +5,7 @@ import { createInitialState, step } from '../sim/world';
 import { EXIT_POINT, MAP_ROWS, MISSION_POINTS } from '../sim/map';
 import type { MissionType, SimInput, SimState, Vec2 } from '../sim/types';
 import { UI_HEX, UI_TEXT } from './palette';
+import { zoneOfRow } from './zones';
 import { playSfx } from '../audio/bgm';
 import {
   DEFAULT_SELECTION,
@@ -109,30 +110,56 @@ export class GameScene extends Phaser.Scene {
     this.keyShift = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
   }
 
+  /** '#'인지 여부만 보는 지역 판정. MAP_ROWS를 직접 읽는 것은 buildTilemap이 이미 하던 방식
+   * 그대로다(§2.2 남북 이웃 마스크·§3.4 드롭섀도 조건 둘 다 "그 칸이 벽인가"만 필요하고,
+   * 맵 밖은 테두리 벽이라 실제로는 발생하지 않는다 — 이 씬은 여전히 sim 상태를 판정하지
+   * 않고 정적 맵 문자만 읽는다, CLAUDE.md 하네스 3). */
+  private isWallChar(col: number, row: number): boolean {
+    if (row < 0 || row >= MAP_ROWS.length) return true;
+    const line = MAP_ROWS[row];
+    if (col < 0 || col >= line.length) return true;
+    return line[col] === '#';
+  }
+
   private buildTilemap(): void {
     const T = WORLD.TILE_SIZE_PX;
+    // SPEC_ZONES.md §1 깊이 순서: 바닥 타일 < 벽 드롭섀도 < 소품 < marker_* < 캐릭터 < 캐노피 < UI.
+    // 소품·캐노피는 다음 호출(§4·§6) — 이번엔 바닥/벽 depth 0, 드롭섀도 depth 0.4, marker_* depth 1(불변).
+    const FLOOR_DEPTH = 0;
+    const SHADOW_DEPTH = 0.4;
     for (let row = 0; row < MAP_ROWS.length; row++) {
       const line = MAP_ROWS[row];
+      const zone = zoneOfRow(row);
       for (let col = 0; col < line.length; col++) {
         const ch = line[col];
         const x = col * T;
         const y = row * T;
         let img: Phaser.GameObjects.Image;
         if (ch === '#') {
-          img = this.add.image(x, y, 'tile_wall');
+          // SPEC_ZONES.md §3.1: variant = (isSolid(north)?2:0) + (isSolid(south)?1:0), frameIndex = zone*4+variant.
+          const northSolid = this.isWallChar(col, row - 1);
+          const southSolid = this.isWallChar(col, row + 1);
+          const variant = (northSolid ? 2 : 0) + (southSolid ? 1 : 0);
+          img = this.add.image(x, y, 'tile_wall', zone * 4 + variant);
         } else if (ch === 'B') {
-          img = this.add.image(x, y, 'tile_bush');
+          img = this.add.image(x, y, 'tile_bush'); // §5.4는 다음 호출 — 아직 구역 무관 단일 프레임
         } else {
           // '.', 'M', 'E', 'P', 'G'는 전부 "바닥 + 앵커"다(RULES.md §2.2) — 바닥은 항상 tile_floor.
-          // 'S'(온천)만 예외로 tile_spa. ART.md §3.4의 결정적 변형 선택식.
+          // 'S'(온천)만 예외로 tile_spa. ART.md §3.4의 결정적 변형 선택식은 그대로,
+          // frameIndex만 SPEC_ZONES.md §5.3대로 zone*4+variant로 바뀌었다.
           if (ch === 'S') {
-            img = this.add.image(x, y, 'tile_spa');
+            img = this.add.image(x, y, 'tile_spa'); // §5.5는 다음 호출 — 아직 구역 무관 단일 프레임
           } else {
             const variant = (col * 7 + row * 13) % 4;
-            img = this.add.image(x, y, 'tile_floor', variant);
+            img = this.add.image(x, y, 'tile_floor', zone * 4 + variant);
           }
         }
-        img.setOrigin(0, 0).setDepth(0);
+        img.setOrigin(0, 0).setDepth(FLOOR_DEPTH);
+
+        // SPEC_ZONES.md §3.4: 드롭섀도는 "바닥 타일(비-벽)이고 북쪽이 벽"일 때만 그린다.
+        if (ch !== '#' && this.isWallChar(col, row - 1)) {
+          this.add.image(x, y, 'tile_shadow').setOrigin(0, 0).setDepth(SHADOW_DEPTH);
+        }
       }
     }
   }
