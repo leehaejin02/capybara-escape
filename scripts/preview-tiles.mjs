@@ -17,10 +17,13 @@ import { fileURLToPath } from 'node:url';
 
 import { encodePng } from './lib/png.mjs';
 import { createCanvas, blitFrame, FRAME_SIZE } from './lib/canvas.mjs';
-import { buildFloorVariant, buildWallVariant, buildShadow, buildBush, buildSpa } from './lib/tiles.mjs';
+import { buildFloorVariant, buildWallVariant, buildShadow, buildBushVariant, buildSpaVariant } from './lib/tiles.mjs';
+import { buildPropFrame } from './lib/props.mjs';
 import { buildBodyDownFrame } from './lib/capybara.mjs';
 import { buildGoblinWalkDownFrame } from './lib/goblin.mjs';
-import { ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE } from './lib/zones.mjs';
+import { ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE, zoneOfRow } from './lib/zones.mjs';
+import { MAP_ROWS } from './lib/map-data.mjs';
+import { propAt } from './lib/prop-placement.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, 'out');
@@ -212,8 +215,11 @@ for (const zone of ZONES) {
   save(`tilerepeat_floor_mixed_${ZONE_NAMES[zone]}.png`, FRAME_SIZE * N, FRAME_SIZE * N, canvas);
 }
 
-tileRepeat4x4(buildBush, 'bush');
-tileRepeat4x4(buildSpa, 'spa');
+// bush/spa는 이제 구역별로 다르다(SPEC_ZONES.md §5.4·§5.5) — 구역별 1장씩, layer 0(바탕)만.
+for (const zone of ZONES) {
+  tileRepeat4x4(() => buildBushVariant(zone, 0), `bush_${ZONE_NAMES[zone]}`);
+  tileRepeat4x4(() => buildSpaVariant(zone), `spa_${ZONE_NAMES[zone]}`);
+}
 
 // ---- 캐릭터 가독성: floor variant 위에 카피바라/고블린 배치 (구역별) ----
 for (const zone of ZONES) {
@@ -273,6 +279,122 @@ for (const zone of ZONES) {
     }
   }
   save(`readability_char_on_wall_${ZONE_NAMES[zone]}.png`, FRAME_SIZE * cols, FRAME_SIZE * rows, canvas);
+}
+
+// ============================================================
+// C. 소품이 배치된 실제 맵 구간 — 구역별 1장씩, 바닥+드롭섀도+소품 전부 합성.
+// SPEC_ZONES.md §9 "소품 밀도 6%가 적절한가 미확인" — 밀도 판정용. 1단계에서 드롭섀도를
+// 빠뜨렸던 실수를 반복하지 않기 위해 GameScene.ts와 같은 레이어(바닥<드롭섀도<소품<벽)를
+// 전부 합성한다. 실제 MAP_ROWS·zoneOfRow·propAt을 그대로 써서 "구역별 1장"이 실제 게임에서
+// 보일 화면과 동일하다 — 합성 전용 문자맵을 새로 짜지 않았다.
+// ============================================================
+{
+  const ZONE_ROW_RANGE = {
+    [ZONE_FOREST]: [0, 13],
+    [ZONE_VILLAGE]: [13, 25],
+    [ZONE_CAVE]: [25, 37],
+  };
+  const COL_START = 0;
+  const COL_END = 25; // "화면(25×18타일)" 기준 폭(§4.1 근거 문단)과 맞춘 절반 구간
+
+  for (const zone of ZONES) {
+    const [rowStart, rowEnd] = ZONE_ROW_RANGE[zone];
+    const cols = COL_END - COL_START;
+    const rowsN = rowEnd - rowStart;
+    const canvas = createCanvas(FRAME_SIZE * cols, FRAME_SIZE * rowsN);
+    for (let row = rowStart; row < rowEnd; row++) {
+      const line = MAP_ROWS[row];
+      const z = zoneOfRow(row); // 항상 zone과 같다(ZONE_ROW_RANGE가 §5.1 그대로) — 방어적으로 다시 계산
+      for (let col = COL_START; col < COL_END; col++) {
+        const ch = line[col];
+        const dstCol = col - COL_START;
+        const dstRow = row - rowStart;
+        let frame;
+        if (ch === '#') {
+          const northSolid = isWallAt(MAP_ROWS, col, row - 1);
+          const southSolid = isWallAt(MAP_ROWS, col, row + 1);
+          const variant = (northSolid ? 2 : 0) + (southSolid ? 1 : 0);
+          frame = buildWallVariant(z, variant);
+        } else if (ch === 'B') {
+          frame = buildBushVariant(z, 0);
+        } else if (ch === 'S') {
+          frame = buildSpaVariant(z);
+        } else {
+          const variant = (col * 7 + row * 13) % 4;
+          frame = buildFloorVariant(z, variant);
+        }
+        blitFrame(canvas, FRAME_SIZE * cols, frame, dstCol, dstRow);
+
+        if (ch !== '#' && isWallAt(MAP_ROWS, col, row - 1)) {
+          blitFrameOver(canvas, FRAME_SIZE * cols, SHADOW_FRAME, dstCol, dstRow);
+        }
+
+        if (ch === '.') {
+          const prop = propAt(col, row);
+          if (prop) {
+            const propFrame = buildPropFrame(prop.zone, prop.index);
+            blitFrameOver(canvas, FRAME_SIZE * cols, propFrame, dstCol, dstRow);
+          }
+        }
+
+        if (ch === 'B') {
+          // 캐노피(layer 1)까지 합성 — 실제 게임에서도 항상 그려진다(§6). 밀도 판정에는
+          // 필요 없지만 "실제 화면과 동일"을 지키려면 뺄 이유가 없다.
+          blitFrameOver(canvas, FRAME_SIZE * cols, buildBushVariant(z, 1), dstCol, dstRow);
+        }
+      }
+    }
+    save(`realmap_props_${ZONE_NAMES[zone]}.png`, FRAME_SIZE * cols, FRAME_SIZE * rowsN, canvas);
+  }
+}
+
+// ============================================================
+// D. 수풀 캐노피 — 캐릭터가 들어간 상태 vs 안 들어간 상태 비교. SPEC_ZONES.md §6의 유일한
+// 판정 방법("잎이 카피바라를 덮어 숨었다가 화면에 보인다"). 실제 맵의 2×2 수풀 패치(숲,
+// (9,2)-(10,3))를 그대로 쓴다 — layer 0(바탕) 4타일 → 캐릭터(있는 쪽만) → layer 1(캐노피)
+// 4타일, GameScene.ts와 같은 깊이 순서(캐릭터 < 캐노피)로 합성한다.
+// ============================================================
+{
+  const zone = ZONE_FOREST;
+  const patchCols = 2;
+  const patchRows = 2;
+  const w = FRAME_SIZE * patchCols;
+  const h = FRAME_SIZE * patchRows;
+
+  // ox/oy=null이면 캐릭터를 그리지 않는다("들어가기 전"). 캐릭터가 있을 때는 두 스냅샷을 보여준다:
+  // (가운데 정렬) 두 타일 경계에 걸친 "패치 중앙" 위치와, (타일0 정렬) 한 타일의 위쪽 절반
+  // 캐노피가 그대로 겹치는 위치 — 실제 걷기 애니메이션이라면 플레이어가 이 사이 모든 위치를
+  // 지나가므로 어느 한쪽만 보여주면 "골라 찍었다"는 인상을 줄 수 있어 둘 다 낸다.
+  function buildPatch(charOffset) {
+    const canvas = createCanvas(w, h);
+    const base = buildBushVariant(zone, 0);
+    for (let r = 0; r < patchRows; r++) for (let c = 0; c < patchCols; c++) blitFrame(canvas, w, base, c, r);
+    if (charOffset) {
+      const capy = buildBodyDownFrame(0);
+      const { ox, oy } = charOffset;
+      for (let y = 0; y < FRAME_SIZE; y++) {
+        for (let x = 0; x < FRAME_SIZE; x++) {
+          const fi = (y * FRAME_SIZE + x) * 4;
+          if (capy[fi + 3] === 0) continue;
+          const di = ((oy + y) * w + (ox + x)) * 4;
+          canvas[di] = capy[fi];
+          canvas[di + 1] = capy[fi + 1];
+          canvas[di + 2] = capy[fi + 2];
+          canvas[di + 3] = 255;
+        }
+      }
+    }
+    const canopy = buildBushVariant(zone, 1);
+    for (let r = 0; r < patchRows; r++) for (let c = 0; c < patchCols; c++) blitFrameOver(canvas, w, canopy, c, r);
+    return canvas;
+  }
+
+  const before = { buf: buildPatch(null), w, h };
+  const afterMid = { buf: buildPatch({ ox: (w - FRAME_SIZE) / 2, oy: (h - FRAME_SIZE) / 2 }), w, h };
+  const afterAligned = { buf: buildPatch({ ox: 0, oy: 0 }), w, h };
+  // 왼쪽부터: 안 들어감 / 패치 중앙(두 타일 경계에 걸침) / 타일0 정렬(캐노피 겹침 최대).
+  const combined = stackHorizontal([before, afterMid, afterAligned], patchRows, 1);
+  save('canopy_hide_before_after.png', combined.w, combined.h, combined.buf);
 }
 
 console.log('preview-tiles: done');

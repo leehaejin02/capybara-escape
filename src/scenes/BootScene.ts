@@ -30,12 +30,18 @@ const SPRITESHEETS: ReadonlyArray<{ key: string; frameWidth: number; frameHeight
   // frameIndex = zone*4 + variant (row-major 스프라이트시트 인덱싱이 그대로 이 식이 된다).
   { key: 'tile_floor', frameWidth: 32, frameHeight: 32 },
   { key: 'tile_wall', frameWidth: 32, frameHeight: 32 },
+  // tile_bush: 64×96 = 2 layer(0=바탕 1=캐노피) × 3구역. frameIndex = zone*2 + layer. SPEC_ZONES.md §5.4·§6.
+  { key: 'tile_bush', frameWidth: 32, frameHeight: 32 },
+  // tile_spa: 32×96 = 1 × 3구역. frameIndex = zone. SPEC_ZONES.md §5.5.
+  { key: 'tile_spa', frameWidth: 32, frameHeight: 32 },
+  // props: 128×96 = 4종(col) × 3구역(row). frameIndex = zone*4 + index. SPEC_ZONES.md §4.
+  { key: 'props', frameWidth: 32, frameHeight: 32 },
   { key: 'marker_mission', frameWidth: 32, frameHeight: 32 },
   { key: 'marker_exit', frameWidth: 32, frameHeight: 32 },
 ];
 
 /** 프레임이 1개뿐인 단순 이미지. docs/ART.md §2.2, SPEC_ZONES.md §3.4(tile_shadow 신규). */
-const IMAGES: readonly string[] = ['tile_shadow', 'tile_bush', 'tile_spa', 'logo_title'];
+const IMAGES: readonly string[] = ['tile_shadow', 'logo_title'];
 
 export class BootScene extends Phaser.Scene {
   constructor() {

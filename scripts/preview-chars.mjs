@@ -7,6 +7,13 @@
  * 3. preview3_composite_x8.png       — body+outfit+hat 합성 4방향 (8배, 조합 3종)
  * 4. preview4_capy_vs_goblin_x8.png  — 카피바라 vs 고블린 나란히 (down/right, 8배)
  * 5. preview5_ingame_1x.png (+ _2x)  — 실제 크기 타일 배경 합성
+ *
+ * 2026-08-07 tech (숲 벽 재질 개정 라운드, 함께 수리): SPEC_ZONES 1단계 zone 리팩터로
+ * tiles.mjs의 시그니처가 (variant) -> (zone, variant)로 바뀌고 buildBush()가
+ * buildBushVariant(zone, layer)로 이름이 바뀐 뒤 이 파일은 갱신되지 않아 깨져 있었다.
+ * npm 스크립트에 안 걸려 있어 빌드는 통과했지만 소스에 깨진 채 남아 있었다 — 여기서 zone을
+ * ZONE_FOREST로 고정해 호출부를 새 시그니처에 맞췄다(§5 미리보기 5의 배경 타일 용도일 뿐
+ * 구역 판정과 무관하다).
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -17,8 +24,9 @@ import { createCanvas, blitFrame, flipFrameX, FRAME_SIZE } from './lib/canvas.mj
 import { buildBodyDownFrame, buildBodyUpFrame, buildBodyRightFrame } from './lib/capybara.mjs';
 import { buildGoblinWalkDownFrame, buildGoblinWalkRightFrame } from './lib/goblin.mjs';
 import { buildOutfitFrame, buildHatFrame } from './lib/overlays.mjs';
-import { buildFloorVariant, buildBush } from './lib/tiles.mjs';
+import { buildFloorVariant, buildBushVariant } from './lib/tiles.mjs';
 import { recolorBuffer, BODY_RECOLOR_MAPS } from './lib/recolor.mjs';
+import { ZONE_FOREST } from './lib/zones.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, 'out');
@@ -147,8 +155,8 @@ function recolorFrame(frame, bodyKey) {
   const w = FRAME_SIZE * cols;
   const h = FRAME_SIZE * rows;
   const canvas = createCanvas(w, h);
-  const variants = [0, 1, 2, 3].map(buildFloorVariant);
-  const bush = buildBush();
+  const variants = [0, 1, 2, 3].map((v) => buildFloorVariant(ZONE_FOREST, v));
+  const bush = buildBushVariant(ZONE_FOREST, 0);
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const isBush = r === 2 && (c === 1 || c === 4);

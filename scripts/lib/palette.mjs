@@ -34,8 +34,11 @@ export const PALETTE = {
   earth_mid: '#8A6A44',
   earth_dark: '#6E5236',
   warm_tan: '#B98F4E',
-  forest_wall_top: '#86A84A',
-  forest_wall: '#1B2F1B',
+  // 2026-08-07 개정(SPEC_ZONES.md §2.6): 숲 벽 = 이끼 낀 돌담(석재). 잎(황록/짙은 초록) 전면 폐기 —
+  // "숲 벽에 초록 0픽셀"(C13/W8/A22)이 신설 규칙이다. 구 값: forest_wall_top #86A84A(147, 황록) /
+  // forest_wall #1B2F1B(39, 짙은 초록).
+  forest_wall_top: '#BCB6A6',
+  forest_wall: '#302C2E',
   forest_floor: '#4E7A3A',
   forest_floor_shade: '#3A5C2C',
   // S1/S4 배경 전용. ART.md §1.1: "어떤 PNG에도 나타나면 안 된다" — 아래 PNG_EXEMPT_NAMES로 표시.

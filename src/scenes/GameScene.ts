@@ -6,6 +6,7 @@ import { EXIT_POINT, MAP_ROWS, MISSION_POINTS } from '../sim/map';
 import type { MissionType, SimInput, SimState, Vec2 } from '../sim/types';
 import { UI_HEX, UI_TEXT } from './palette';
 import { zoneOfRow } from './zones';
+import { propAt } from './propPlacement';
 import { playSfx } from '../audio/bgm';
 import {
   DEFAULT_SELECTION,
@@ -123,10 +124,14 @@ export class GameScene extends Phaser.Scene {
 
   private buildTilemap(): void {
     const T = WORLD.TILE_SIZE_PX;
-    // SPEC_ZONES.md §1 깊이 순서: 바닥 타일 < 벽 드롭섀도 < 소품 < marker_* < 캐릭터 < 캐노피 < UI.
-    // 소품·캐노피는 다음 호출(§4·§6) — 이번엔 바닥/벽 depth 0, 드롭섀도 depth 0.4, marker_* depth 1(불변).
+    // SPEC_ZONES.md §1 깊이 순서: 바닥 < 드롭섀도 < 소품 < marker_* < 캐릭터 < 수풀 캐노피 < UI.
+    // 바닥/벽 depth 0, 드롭섀도 0.4, 소품 0.6, marker_* 1(불변), 캐릭터 2000+y(불변).
+    // 캐노피는 "캐릭터보다 위"만 요구되므로 캐릭터가 도달 가능한 최대 depth(2000+MAP_HEIGHT_PX)
+    // 보다 확실히 큰 상수를 쓴다 — 특정 타일 y와 결부시키지 않아도 전역적으로 항상 위다.
     const FLOOR_DEPTH = 0;
     const SHADOW_DEPTH = 0.4;
+    const PROP_DEPTH = 0.6;
+    const CANOPY_DEPTH = 2000 + WORLD.MAP_HEIGHT_PX + T;
     for (let row = 0; row < MAP_ROWS.length; row++) {
       const line = MAP_ROWS[row];
       const zone = zoneOfRow(row);
@@ -142,23 +147,34 @@ export class GameScene extends Phaser.Scene {
           const variant = (northSolid ? 2 : 0) + (southSolid ? 1 : 0);
           img = this.add.image(x, y, 'tile_wall', zone * 4 + variant);
         } else if (ch === 'B') {
-          img = this.add.image(x, y, 'tile_bush'); // §5.4는 다음 호출 — 아직 구역 무관 단일 프레임
+          // SPEC_ZONES.md §5.4: layer 0(바탕). layer 1(캐노피)은 §6대로 HIDING.ENABLED와 무관하게
+          // 항상 그린다 — 렌더가 게임 상태를 판정하지 않는다(하네스 3).
+          img = this.add.image(x, y, 'tile_bush', zone * 2 + 0);
+          this.add.image(x, y, 'tile_bush', zone * 2 + 1).setOrigin(0, 0).setDepth(CANOPY_DEPTH);
+        } else if (ch === 'S') {
+          // SPEC_ZONES.md §5.5: frameIndex = zone (COLS=1). 행 0·2가 행 1과 픽셀 동일하게 구워져
+          // 있으므로 여기서 예외 분기가 필요 없다.
+          img = this.add.image(x, y, 'tile_spa', zone);
         } else {
           // '.', 'M', 'E', 'P', 'G'는 전부 "바닥 + 앵커"다(RULES.md §2.2) — 바닥은 항상 tile_floor.
-          // 'S'(온천)만 예외로 tile_spa. ART.md §3.4의 결정적 변형 선택식은 그대로,
-          // frameIndex만 SPEC_ZONES.md §5.3대로 zone*4+variant로 바뀌었다.
-          if (ch === 'S') {
-            img = this.add.image(x, y, 'tile_spa'); // §5.5는 다음 호출 — 아직 구역 무관 단일 프레임
-          } else {
-            const variant = (col * 7 + row * 13) % 4;
-            img = this.add.image(x, y, 'tile_floor', zone * 4 + variant);
-          }
+          // ART.md §3.4의 결정적 변형 선택식은 그대로, frameIndex만 SPEC_ZONES.md §5.3대로
+          // zone*4+variant로 바뀌었다.
+          const variant = (col * 7 + row * 13) % 4;
+          img = this.add.image(x, y, 'tile_floor', zone * 4 + variant);
         }
         img.setOrigin(0, 0).setDepth(FLOOR_DEPTH);
 
         // SPEC_ZONES.md §3.4: 드롭섀도는 "바닥 타일(비-벽)이고 북쪽이 벽"일 때만 그린다.
         if (ch !== '#' && this.isWallChar(col, row - 1)) {
           this.add.image(x, y, 'tile_shadow').setOrigin(0, 0).setDepth(SHADOW_DEPTH);
+        }
+
+        // SPEC_ZONES.md §4.1: 소품은 순수 바닥('.') 타일에만 놓는다 — B/S/M/E/P/G/#는 대상이 아니다.
+        if (ch === '.') {
+          const prop = propAt(col, row);
+          if (prop) {
+            this.add.image(x, y, 'props', prop.zone * 4 + prop.index).setOrigin(0, 0).setDepth(PROP_DEPTH);
+          }
         }
       }
     }

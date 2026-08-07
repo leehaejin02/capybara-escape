@@ -21,7 +21,8 @@ import {
   buildGoblinIdleRightFrame,
 } from './lib/goblin.mjs';
 import { buildOutfitFrame, buildHatFrame } from './lib/overlays.mjs';
-import { buildFloorVariant, buildWallVariant, buildShadow, buildBush, buildSpa } from './lib/tiles.mjs';
+import { buildFloorVariant, buildWallVariant, buildShadow, buildBushVariant, buildSpaVariant } from './lib/tiles.mjs';
+import { buildPropFrame } from './lib/props.mjs';
 import { buildMissionFrame, buildExitFrameIndex } from './lib/markers.mjs';
 import { recolorBuffer, BODY_RECOLOR_MAPS } from './lib/recolor.mjs';
 import { ZONE_COUNT } from './lib/zones.mjs';
@@ -128,8 +129,7 @@ savePng('goblin_idle', FRAME_SIZE * 2, FRAME_SIZE * 4, goblinIdleSheet);
 
 // ============ tiles ============
 // tile_floor / tile_wall: 128×96 = 4변형(col) × 3구역(row). frameIndex = zone*4 + variant
-// (SPEC_ZONES.md §2.2 "row는 방향이 아니라 구역" 규약. §5.4 수풀·§5.5 온천은 다음 호출이라
-// tile_bush/tile_spa는 이번엔 기존 32×32 단일 프레임 그대로 둔다.)
+// (SPEC_ZONES.md §2.2 "row는 방향이 아니라 구역" 규약.)
 {
   const sheet = createCanvas(FRAME_SIZE * 4, FRAME_SIZE * ZONE_COUNT);
   for (let zone = 0; zone < ZONE_COUNT; zone++) {
@@ -145,8 +145,28 @@ savePng('goblin_idle', FRAME_SIZE * 2, FRAME_SIZE * 4, goblinIdleSheet);
   savePng('tile_wall', FRAME_SIZE * 4, FRAME_SIZE * ZONE_COUNT, sheet);
 }
 savePng('tile_shadow', FRAME_SIZE, FRAME_SIZE, buildShadow());
-savePng('tile_bush', FRAME_SIZE, FRAME_SIZE, buildBush());
-savePng('tile_spa', FRAME_SIZE, FRAME_SIZE, buildSpa());
+// tile_bush: 64×96 = 2 layer(0=바탕 1=캐노피) × 3구역. frameIndex = zone*2 + layer. SPEC_ZONES.md §5.4·§6.
+{
+  const sheet = createCanvas(FRAME_SIZE * 2, FRAME_SIZE * ZONE_COUNT);
+  for (let zone = 0; zone < ZONE_COUNT; zone++) {
+    for (let layer = 0; layer < 2; layer++) blitFrame(sheet, FRAME_SIZE * 2, buildBushVariant(zone, layer), layer, zone);
+  }
+  savePng('tile_bush', FRAME_SIZE * 2, FRAME_SIZE * ZONE_COUNT, sheet);
+}
+// tile_spa: 32×96 = 1 × 3구역(행 0·2가 행 1과 픽셀 동일). frameIndex = zone. SPEC_ZONES.md §5.5.
+{
+  const sheet = createCanvas(FRAME_SIZE, FRAME_SIZE * ZONE_COUNT);
+  for (let zone = 0; zone < ZONE_COUNT; zone++) blitFrame(sheet, FRAME_SIZE, buildSpaVariant(zone), 0, zone);
+  savePng('tile_spa', FRAME_SIZE, FRAME_SIZE * ZONE_COUNT, sheet);
+}
+// props: 128×96 = 4종 × 3구역. frameIndex = zone*4 + index. SPEC_ZONES.md §4.
+{
+  const sheet = createCanvas(FRAME_SIZE * 4, FRAME_SIZE * ZONE_COUNT);
+  for (let zone = 0; zone < ZONE_COUNT; zone++) {
+    for (let index = 0; index < 4; index++) blitFrame(sheet, FRAME_SIZE * 4, buildPropFrame(zone, index), index, zone);
+  }
+  savePng('props', FRAME_SIZE * 4, FRAME_SIZE * ZONE_COUNT, sheet);
+}
 
 // ============ markers ============
 {

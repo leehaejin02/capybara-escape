@@ -48,8 +48,10 @@ function pxInset(buf, x, y, color) {
   px(buf, x, y, color);
 }
 
-/** 결정적 정수 해시 (시드 기반). Math.random 대신 — 재생성해도 항상 같은 결과가 나와야 한다. */
-function hash2(x, y, seed) {
+/** 결정적 정수 해시 (시드 기반). Math.random 대신 — 재생성해도 항상 같은 결과가 나와야 한다.
+ * export: SPEC_ZONES.md §4.1 "tiles.mjs의 기존 해시 재사용" — scripts/lib/prop-placement.mjs가 이 식을
+ * 그대로 가져다 쓴다(값은 복사가 아니라 함수 재사용). */
+export function hash2(x, y, seed) {
   let h = (x * 374761393 + y * 668265263 + seed * 2654435761) >>> 0;
   h = (h ^ (h >>> 13)) >>> 0;
   h = Math.imul(h, 1274126177) >>> 0;
@@ -148,52 +150,47 @@ export function buildFloorVariant(zone, variant) {
 // 이 세 불리언이 §3.1 표(variant 0~3)를 그대로 재현한다.
 // ============================================================
 
-/** 숲 윗면 잎 블롭 4개(체비쇼프). (x, y mod 17) 랩 — variant 1·3의 "y=31까지 이어짐"이
- * 주기 17로 자동 반복되게 만드는 장치다(SPEC_ZONES.md §3.3 표 그대로). */
-const FOREST_TOP_BLOBS = [
-  { cx: 5, cy: 4, r: 3 },
-  { cx: 19, cy: 3, r: 2 },
-  { cx: 26, cy: 11, r: 3 },
-  { cx: 12, cy: 14, r: 2 },
-];
-
 /**
- * 2026-08-07 tech (사용자 육안 판정 반영, 재촬영 라운드): SPEC_ZONES.md §3.3 원문은 "체비쇼프"
- * (정사각형) 거리로 블롭을 정의했는데, 그대로 구현하면 잎이 아니라 **정사각형 4개가 타일마다
- * 동일 위치에 그대로 반복**돼 "시장바둑판"으로 읽혔다(사용자 판정 — 원인 (a), 모양이 사각형인
- * 것이 원인이고 (b) 랩 실패는 아니다: y mod17/x 반복 자체는 마을·동굴도 똑같이 하는데 그
- * 둘은 "인공 구조물이라 규칙적이어도 자연스럽다"는 판정을 받았다).
- * `tile_bush.mjs`가 이미 같은 이유로 Chebyshev→유클리드 근사(dx²+dy² ≤ r²+r)로 바꾼 선례가
- * 있어 그 식을 그대로 재사용했다 — 중심 좌표(cx,cy)와 반경(r)은 SPEC_ZONES.md §3.3 값 그대로,
- * **색·문턱값·다른 구역 좌표는 바꾸지 않았다.** 블롭 하단 1px 그림자 선도 tile_bush.mjs와
- * 동일한 방식(원형 판정과 무관하게 전 폭에 flat line)으로 다시 그린다.
+ * 2026-08-07 tech (SPEC_ZONES.md §2.6 개정 — 숲 벽 재질을 잎에서 이끼 낀 돌담(적층 석재)으로
+ * 전면 교체): 잎 블롭(원형/유클리드 판정) 방식은 폐기한다. gd 판정 근거(§2.6-b) — "관목 울타리로
+ * 읽힌다" = 은신처(수풀)와의 오독(C12 26.7 실패)이었고, 원인은 블롭의 모양이 아니라 "반복되는
+ * 유기물"이라는 모티프 자체였다. 인공 구조물(적층 석재)로 바꾸면 마을(널빤지)·동굴(벽돌)과
+ * 같은 32px 반복이 "규칙적이라 자연스럽다"로 읽힌다.
+ *
+ * 좌표는 SPEC_ZONES.md §3.3 "숲 윗면 무늬" 행 그대로 — 전부 직선(가로줄·세로줄), 원형·블롭
+ * 판정 없음. **`yy`에 {0,1}을 쓰지 않는다** — variant 1·3에서 y=17→yy=0, y=18→yy=1이 되어
+ * 거기 ink 전 구간 줄이 생기면 W4(앞면 없어야 할 프레임에 앞면이 생긴 것으로 오판)가 깨진다.
+ * 그래서 가로 줄눈을 {5,11}로 잡았다(동굴의 {5,12}와 같은 이유). 그리고 **숲 벽에 초록 0픽셀**
+ * (C13/W8) — 여기서 쓰는 색은 ink · capy_gray_dark · (베이스) forest_wall_top 셋뿐이고
+ * 전부 최대 RGB 채널이 R 또는 B다.
  */
 function drawForestTopPattern(buf, y0, y1) {
+  // 가로 줄눈 + 줄눈 바로 아래 그늘
   for (let y = y0; y <= y1; y++) {
     const yy = ((y % 17) + 17) % 17;
-    for (let x = 0; x < FRAME_SIZE; x++) {
-      for (const b of FOREST_TOP_BLOBS) {
-        const dx = x - b.cx;
-        const dy = yy - b.cy;
-        if (dx * dx + dy * dy <= b.r * b.r + b.r) px(buf, x, y, 'forest_floor');
-      }
+    if (yy === 5 || yy === 11) {
+      for (let x = 0; x < FRAME_SIZE; x++) px(buf, x, y, 'ink');
+    } else if (yy === 6 || yy === 12) {
+      for (let x = 0; x < FRAME_SIZE; x++) px(buf, x, y, 'capy_gray_dark');
     }
   }
-  // 블롭 하단 그림자 선 — 원형 채움과 별개로 전 폭에 평평하게 긋는다(tile_bush.mjs와 동일 스타일).
+  // 세로 줄눈 — 밴드A(yy 1..4) x=10,21 / 밴드B(yy 7..10) x=5,16,27 / 밴드C(yy 13..16) x=10,21
   for (let y = y0; y <= y1; y++) {
     const yy = ((y % 17) + 17) % 17;
-    for (const b of FOREST_TOP_BLOBS) {
-      if (yy !== b.cy + b.r) continue;
-      for (let dx = -b.r; dx <= b.r; dx++) {
-        const x = ((b.cx + dx) % FRAME_SIZE + FRAME_SIZE) % FRAME_SIZE;
-        px(buf, x, y, 'forest_floor_shade');
-      }
+    if (yy >= 1 && yy <= 4) {
+      for (const x of [10, 21]) px(buf, x, y, 'ink');
+    } else if (yy >= 7 && yy <= 10) {
+      for (const x of [5, 16, 27]) px(buf, x, y, 'ink');
+    } else if (yy >= 13 && yy <= 16) {
+      for (const x of [10, 21]) px(buf, x, y, 'ink');
     }
   }
 }
 
+/** 숲 앞면 무늬: 세로 결 1px x=6,22 (y 20..29). 2026-08-07 개정 — 색만 forest_floor_shade(초록)
+ * 에서 capy_gray_dark(석재 그늘)로 바꿨다. 좌표는 그대로(SPEC_ZONES.md §3.3). */
 function drawForestFacePattern(buf) {
-  for (const x of [6, 22]) for (let y = 20; y <= 29; y++) px(buf, x, y, 'forest_floor_shade');
+  for (const x of [6, 22]) for (let y = 20; y <= 29; y++) px(buf, x, y, 'capy_gray_dark');
 }
 
 /**
@@ -250,7 +247,7 @@ const WALL_ZONES = {
   [ZONE_FOREST]: {
     top: 'forest_wall_top',
     face: 'forest_wall',
-    faceLight: 'forest_floor_shade',
+    faceLight: 'capy_gray_dark',
     drawTop: drawForestTopPattern,
     drawFace: drawForestFacePattern,
   },
@@ -313,10 +310,22 @@ export function buildShadow() {
 }
 
 // ============================================================
-// tile_bush / tile_spa — 이번 호출(SPEC_ZONES 1단계) 범위 밖. ART.md §3.4 그대로 유지.
-// (SPEC_ZONES.md §5.4 수풀·§5.5 온천은 다음 호출)
+// tile_bush — 2 layer(0=바탕 1=캐노피) × 3구역. SPEC_ZONES.md §5.4·§6.
+// tile_spa — 1 × 3구역(행 0·2는 행 1과 픽셀 완전 동일). SPEC_ZONES.md §5.5.
 // ============================================================
 
+/**
+ * ART.md §3.4 원안 잎 블롭 5개 + tech가 중앙 여백을 메우려 추가한 (16,14,r2) 1개, 총 6개.
+ * 전 구역 "바탕"(layer 0)과 "캐노피"(layer 1) 양쪽이 공유하는 좌표다(SPEC_ZONES.md §6:
+ * "바탕과 같은 잎 블롭").
+ *
+ * 판정은 체비쇼프가 아니라 **유클리드 근사**(`dx²+dy² ≤ r²+r`)다. ART.md §3.4 tech 구현 노트가
+ * 이미 이 근사로 바꾼 선례가 있다(정사각형 블롭이 "시장바둑판"으로 읽힌다는 육안 판정, §3.3의
+ * forest 윗면 블롭과 같은 이유) — SPEC_ZONES.md §5.4 본문이 "체비쇼프"라 적은 곳이 있다면
+ * 그 표현을 그대로 구현하지 않고 이 근사를 재사용한다. 지시(사용자 프롬프트)가 명시적으로
+ * 요구한 처리다: "1단계에서 tile_bush.mjs가 이미 유클리드 반경을 쓴다는 걸 확인했다 — 스펙
+ * §5.4가 체비쇼프라고 쓴 곳이 있으면 같은 함정이므로 유클리드로 가되, 그렇게 했다고 보고해라."
+ */
 const BUSH_BLOBS = [
   { cx: 6, cy: 7, r: 3 },
   { cx: 20, cy: 5, r: 2 },
@@ -331,7 +340,8 @@ function wrapDist(a, b, size) {
   return Math.min(d, size - d);
 }
 
-export function buildBush() {
+/** layer 0(바탕)의 전 구역 공통 밑그림 — 구역별 구조물(§5.4 표)이 이 위에 얹힌다. */
+function buildBushSharedBase() {
   const buf = createCanvas(FRAME_SIZE, FRAME_SIZE);
   fill(buf, 'tile_bush_dark');
 
@@ -354,7 +364,102 @@ export function buildBush() {
   return buf;
 }
 
-export function buildSpa() {
+/** 숲: 쓰러진 통나무. SPEC_ZONES.md §5.4 — capy_brown_dark 가로 막대 y23..27 x 전 구간(랩,
+ * 실제로는 전 폭이라 랩할 필요가 없다), 윗줄 y=23은 earth_dark 하이라이트. */
+function drawForestFallenLog(buf) {
+  for (let y = 23; y <= 27; y++) {
+    for (let x = 0; x < FRAME_SIZE; x++) px(buf, x, y, 'capy_brown_dark');
+  }
+  for (let x = 0; x < FRAME_SIZE; x++) px(buf, x, 23, 'earth_dark');
+}
+
+/** 마을: 나무통/상자. SPEC_ZONES.md §5.4 — earth_dark 사각 (9,9)-(22,22) 모서리 1px 제거,
+ * 테두리 ink, 안쪽 warm_tan 가로 1px 2줄 y∈{13,18}(x 11..20). */
+function drawVillageCrate(buf) {
+  for (let y = 9; y <= 22; y++) {
+    for (let x = 9; x <= 22; x++) {
+      const isCorner = (x === 9 || x === 22) && (y === 9 || y === 22);
+      if (isCorner) continue;
+      px(buf, x, y, 'earth_dark');
+    }
+  }
+  for (let x = 10; x <= 21; x++) {
+    px(buf, x, 9, 'ink');
+    px(buf, x, 22, 'ink');
+  }
+  for (let y = 10; y <= 21; y++) {
+    px(buf, 9, y, 'ink');
+    px(buf, 22, y, 'ink');
+  }
+  for (const y of [13, 18]) for (let x = 11; x <= 20; x++) px(buf, x, y, 'warm_tan');
+}
+
+/** 동굴: 이끼 낀 바위. SPEC_ZONES.md §5.4 — 잎 블롭 5개 중 2개(중심 (20,5) r=2 / (11,24) r=2)를
+ * cave_wall_face로 교체 + accent_amber 버섯 갓 3px 가로선 (14,16)-(16,16). */
+function drawCaveMossyRock(buf) {
+  for (const { cx, cy, r } of [
+    { cx: 20, cy: 5, r: 2 },
+    { cx: 11, cy: 24, r: 2 },
+  ]) {
+    for (let y = 0; y < FRAME_SIZE; y++) {
+      for (let x = 0; x < FRAME_SIZE; x++) {
+        const dx = wrapDist(x, cx, FRAME_SIZE);
+        const dy = wrapDist(y, cy, FRAME_SIZE);
+        if (dx * dx + dy * dy <= r * r + r) px(buf, x, y, 'cave_wall_face');
+      }
+    }
+  }
+  for (let x = 14; x <= 16; x++) px(buf, x, 16, 'accent_amber');
+}
+
+/** layer 0(바탕): 공유 밑그림 + 구역별 구조물. SPEC_ZONES.md §5.4. */
+function buildBushBase(zone) {
+  const buf = buildBushSharedBase();
+  if (zone === ZONE_FOREST) drawForestFallenLog(buf);
+  else if (zone === ZONE_VILLAGE) drawVillageCrate(buf);
+  else if (zone === ZONE_CAVE) drawCaveMossyRock(buf);
+  return buf;
+}
+
+/**
+ * layer 1(캐노피): SPEC_ZONES.md §6 — "바탕과 같은 잎 블롭 중 위쪽 절반(y 0..15)만 그리고
+ * 나머지는 알파 0". 구역별 구조물(통나무·상자·바위)은 캐노피에 넣지 않는다 — §6 원문이
+ * "바탕과 같은 잎 블롭"이라고만 적었고 구역별 표는 layer 0 전용이다. 3구역 모두 같은
+ * 그림이지만(§6이 구역별 차이를 요구하지 않는다), tile_bush.png의 프레임 슬롯은 구역마다
+ * 있어야 하므로(zone*2+layer 인덱싱) zone과 무관하게 이 함수를 그대로 반환한다.
+ */
+function buildBushCanopy() {
+  const buf = createCanvas(FRAME_SIZE, FRAME_SIZE); // 알파 0에서 시작 — 전부 캐노피 밖은 투명
+  for (const { cx, cy, r } of BUSH_BLOBS) {
+    for (let y = 0; y <= 15; y++) {
+      for (let x = 0; x < FRAME_SIZE; x++) {
+        const dx = wrapDist(x, cx, FRAME_SIZE);
+        const dy = wrapDist(y, cy, FRAME_SIZE);
+        if (dx * dx + dy * dy <= r * r + r) px(buf, x, y, 'tile_bush_mid');
+      }
+    }
+  }
+  for (const { cx, cy, r } of BUSH_BLOBS) {
+    const rowY = (cy + r + FRAME_SIZE) % FRAME_SIZE;
+    if (rowY > 15) continue; // 하단 그림자 줄이 y 0..15 밖이면 그리지 않는다(캐노피는 위쪽 절반뿐)
+    for (let dx = -r; dx <= r; dx++) {
+      const x = ((cx + dx) % FRAME_SIZE + FRAME_SIZE) % FRAME_SIZE;
+      px(buf, x, rowY, 'tile_bush_dark');
+    }
+  }
+  return buf;
+}
+
+/** frameIndex = zone*2 + layer (layer 0=바탕, 1=캐노피). SPEC_ZONES.md §5.4. */
+export function buildBushVariant(zone, layer) {
+  return layer === 1 ? buildBushCanopy() : buildBushBase(zone);
+}
+
+/** SPEC_ZONES.md §5.5 — 온천은 3구역 모두 픽셀 완전 동일(행 0·2를 행 1과 같게 굽는다).
+ * `zone` 인자는 frameIndex 계산 호출부와의 시그니처 일관성(buildFloorVariant/buildWallVariant와
+ * 동형)을 위해서만 받고 실제로는 쓰지 않는다 — 렌더 코드에서 예외 분기를 없애는 게 이
+ * 결정의 취지이므로(같은 그림을 3번 굽는다), 이 함수도 zone별 분기를 만들지 않는다. */
+export function buildSpaVariant(_zone) {
   const buf = createCanvas(FRAME_SIZE, FRAME_SIZE);
   fill(buf, 'tile_spa');
   for (let x = 0; x < FRAME_SIZE; x++) {

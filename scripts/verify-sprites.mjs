@@ -26,6 +26,29 @@
  *   직접 픽셀 판독해 검사한다. W6(프레임 선택식)·W7(드롭섀도 배치 조건)은 **렌더 코드
  *   (GameScene.ts)의 로직 검사라 PNG 픽셀만으로 확인할 수 없다** — 이 스크립트는 정적 확인으로
  *   대신했다고 아래 콘솔 출력에 명시한다(하네스 14, 실측 아님을 숨기지 않는다).
+ *
+ * 2026-08-07 tech (SPEC_ZONES 2단계): R1~R5·Z-B1·C11/C12(docs/SPEC_ZONES.md §4.4·§5.4·§2.5)를
+ * PNG 실측 + 실제 맵(scripts/lib/map-data.mjs) 기반으로 추가했다.
+ *   R1(크기)은 EXPECTED_SIZE 갱신(props 128×96) + A3가 검사한다.
+ *   R2(P1~P4)는 props.png 12프레임을 픽셀 판독해 검사한다. P5(무-애니메이션)·P6(지배색 C1)은
+ *   이번 세션 지시가 명시한 R1/R2 범위 밖이라 여기서 검사하지 않는다(§4.4 R2 원문도 P1~P4만
+ *   요구한다) — 미구현임을 콘솔에 남긴다.
+ *   R3(배치 결정성)은 scripts/lib/prop-placement.mjs의 propAt()을 맵 전체에 대해 두 번(서로
+ *   다른 시점에 재계산) 돌려 완전 동일한지 비교한다.
+ *   R4(앵커·격자 회피)는 propAt()이 실제로 놓은 모든 소품에 대해 그 자리가 규칙을 어기지
+ *   않는지 재검사한다.
+ *   R5(sim 클리어율 불변)는 이 스크립트가 아니라 `npm run sim`을 별도 실행해 확인한다 —
+ *   PNG 판독 스크립트가 sim CLI를 구동하는 것은 관심사 밖이라 여기 넣지 않는다(콘솔에 안내만).
+ *   Z-B1(수풀 layer 0 조성비)·C11/C12(은신처 판별)는 tile_bush.png·tile_floor.png·
+ *   tile_wall.png를 픽셀 판독해 면적(가중) 비율·평균 RGB로 실측한다 — docs/SPEC_ZONES.md §9가
+ *   "면적 비율을 gd가 손으로 추정했다"고 명시한 값을 여기서 처음 실측으로 검증한다.
+ *
+ * 2026-08-07 tech (SPEC_ZONES §2.6 개정 — 숲 벽 재질 변경 라운드):
+ *   C12의 wall̄ 정의를 WALL_FACE만(y19..31)에서 **variant0 프레임 전체(y0..31)**로 고쳤다
+ *   (gd 확정, §2.6-a — 이전 판은 tech가 정의 공백에서 판단을 되돌려 보낸 것이었다).
+ *   A22(신설) — 숲 벽(tile_wall zone=forest 4프레임)에 최대 RGB 채널이 G인 픽셀 0개
+ *   ("숲에서 초록은 전부 통과 가능하다", §2.6-c / C13 / W8).
+ *   A23(신설) — props.png 12프레임 전부에 tile_bush_dark·tile_bush_mid 0px (§4.3 P7).
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -35,6 +58,8 @@ import { fileURLToPath } from 'node:url';
 import { decodePng } from './lib/png.mjs';
 import { PALETTE, PALETTE_PNG_EXEMPT_NAMES, hexToRgb } from './lib/palette.mjs';
 import { ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE } from './lib/zones.mjs';
+import { MAP_ROWS } from './lib/map-data.mjs';
+import { propAt, ANCHORS, LATTICE_COLS, LATTICE_ROWS, ANCHOR_AVOID_TILES } from './lib/prop-placement.mjs';
 
 const ZONE_LABELS = { [ZONE_FOREST]: '숲', [ZONE_VILLAGE]: '마을', [ZONE_CAVE]: '동굴' };
 
@@ -70,8 +95,9 @@ const EXPECTED_SIZE = {
   tile_floor: [128, 96],
   tile_wall: [128, 96],
   tile_shadow: [32, 32], // 신규(SPEC_ZONES.md §3.4)
-  tile_bush: [32, 32], // §5.4는 다음 호출 — 이번엔 기존 32×32 그대로
-  tile_spa: [32, 32], // §5.5는 다음 호출 — 이번엔 기존 32×32 그대로
+  tile_bush: [64, 96], // SPEC_ZONES.md §5.4 — 2 layer(바탕/캐노피) × 3구역
+  tile_spa: [32, 96], // SPEC_ZONES.md §5.5 — 1 × 3구역(행 0·2가 행 1과 픽셀 동일)
+  props: [128, 96], // SPEC_ZONES.md §4 — 4종 × 3구역 (R1)
   marker_mission: [96, 32],
   marker_exit: [64, 32],
 };
@@ -503,6 +529,268 @@ if (!wallImg || !floorImg || !shadowImg) {
 
 notes.push('[W6/W7 참고] 렌더 코드(GameScene.ts) 로직 검사라 PNG 픽셀만으로 확인 불가 — tech가 소스 정적 확인으로 대신함(실측 아님, 하네스 14)');
 
+// ---- R1/R2 (docs/SPEC_ZONES.md §4.4) — props.png 12프레임 실측 ----
+// R1(크기)은 EXPECTED_SIZE(props: 128×96) + A3가 이미 검사했다. 여기는 R2(P1~P4)만.
+{
+  const propsImg = images['props'];
+  if (!propsImg) {
+    fail('[R2] props.png 없음 — 검사 불가');
+  } else {
+    const GOBLIN_HEXES = new Set(
+      [PALETTE.goblin_dark, PALETTE.goblin_mid, PALETTE.goblin_shadow].map((h) => h.toUpperCase())
+    );
+    const AMBER_HEX = PALETTE.accent_amber.toUpperCase();
+    for (const zone of [ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE]) {
+      for (let index = 0; index < 4; index++) {
+        const frame = getFrame(propsImg, FRAME_SIZE, index, zone);
+        let minX = FRAME_SIZE;
+        let maxX = -1;
+        let minY = FRAME_SIZE;
+        let maxY = -1;
+        let alphaCount = 0;
+        let goblinCount = 0;
+        let amberCount = 0;
+        for (let y = 0; y < FRAME_SIZE; y++) {
+          for (let x = 0; x < FRAME_SIZE; x++) {
+            const i = (y * FRAME_SIZE + x) * 4;
+            if (frame[i + 3] === 0) continue;
+            alphaCount++;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            const hex = `#${[frame[i], frame[i + 1], frame[i + 2]]
+              .map((v) => v.toString(16).padStart(2, '0'))
+              .join('')}`.toUpperCase();
+            if (GOBLIN_HEXES.has(hex)) goblinCount++;
+            if (hex === AMBER_HEX) amberCount++;
+          }
+        }
+        const label = `props.png zone=${ZONE_LABELS[zone]} index=${index}`;
+        if (alphaCount === 0) {
+          fail(`[R2 P1] ${label}: 알파≠0 픽셀이 0개(빈 프레임)`);
+        } else {
+          const w = maxX - minX + 1;
+          const h = maxY - minY + 1;
+          if (w > 20 || h > 20) fail(`[R2 P1] ${label}: bbox ${w}x${h} (>20x20)`);
+        }
+        if (goblinCount > 0) fail(`[R2 P2] ${label}: 고블린색(goblin_dark/mid/shadow) 픽셀 ${goblinCount}개 (0이어야 함)`);
+        if (amberCount > 8) fail(`[R2 P3] ${label}: accent_amber 픽셀 ${amberCount}개 (>8)`);
+        if (alphaCount > 150) fail(`[R2 P4] ${label}: 알파≠0 픽셀 ${alphaCount}개 (>150)`);
+      }
+    }
+  }
+}
+notes.push(
+  '[R2 참고] P5(무-애니메이션)·P6(소품 지배색 C1)은 이번 세션 지시 범위(§4.4 R2: P1~P4) 밖이라 검사하지 않았다 — 미구현임을 그대로 남긴다(하네스 14)'
+);
+
+// ---- R3 (배치 결정성) — 실제 맵 전체를 두 번 계산해 완전히 같은지 비교 ----
+{
+  const cols = MAP_ROWS[0].length;
+  const rowsN = MAP_ROWS.length;
+  function computeAllProps() {
+    const out = [];
+    for (let row = 0; row < rowsN; row++) {
+      for (let col = 0; col < cols; col++) out.push(propAt(col, row));
+    }
+    return out;
+  }
+  const passA = computeAllProps();
+  const passB = computeAllProps();
+  let mismatch = 0;
+  for (let i = 0; i < passA.length; i++) {
+    const a = passA[i];
+    const b = passB[i];
+    const same = (a === null && b === null) || (a !== null && b !== null && a.zone === b.zone && a.index === b.index);
+    if (!same) mismatch++;
+  }
+  if (mismatch > 0) {
+    fail(`[R3 결정성] 같은 맵을 두 번 계산했더니 소품 배치가 ${mismatch}칸에서 달랐다 (0이어야 함)`);
+  }
+}
+
+// ---- R4 (앵커·순찰 격자 회피) — 실제로 놓인 모든 소품이 §4.1 회피 규칙을 지키는지 재검사 ----
+{
+  let violations = 0;
+  let placedCount = 0;
+  for (let row = 0; row < MAP_ROWS.length; row++) {
+    const line = MAP_ROWS[row];
+    for (let col = 0; col < line.length; col++) {
+      const p = propAt(col, row);
+      if (!p) continue;
+      placedCount++;
+      const nearAnchor = ANCHORS.some(
+        (a) => Math.max(Math.abs(a.col - col), Math.abs(a.row - row)) <= ANCHOR_AVOID_TILES
+      );
+      const onGrid = LATTICE_COLS.includes(col) || LATTICE_ROWS.includes(row);
+      if (nearAnchor || onGrid) violations++;
+    }
+  }
+  if (violations > 0) {
+    fail(`[R4] 앵커(M/E/P/G) 2타일 이내 또는 순찰 격자(col∈{6,18,30,42}·row∈{7,19,31}) 위에 놓인 소품 ${violations}개 (0개여야 함)`);
+  }
+  notes.push(`[R4 참고] 실제 맵 전체 소품 개수 ${placedCount}개 (SPEC_ZONES.md §4.1 설계값: 약 75개)`);
+}
+
+notes.push('[R5 참고] 이 스크립트(PNG 픽셀 판독)는 sim CLI를 구동하지 않는다 — `npm run sim`을 별도로 실행해 클리어율이 소품 도입 전후로 동일한지 확인한다(하네스 14)');
+
+// ---- Z-B1 (docs/SPEC_ZONES.md §5.4) — 수풀 layer 0(바탕)의 구역별 조성비 ----
+// "테마보다 우선하는 규칙": layer 0에서 {tile_bush_dark, tile_bush_mid} 합계 면적 ≥50%,
+// 그중 tile_bush_mid ≥10%. 구역별 구조물(통나무·상자·바위)이 이 비율을 깎아먹을 수 있어
+// 손 계산이 아니라 실제 PNG로 측정한다(하네스 14).
+{
+  const bushImg = images['tile_bush'];
+  if (!bushImg) {
+    fail('[Z-B1] tile_bush.png 없음 — 검사 불가');
+  } else {
+    const BUSH_DARK_HEX = PALETTE.tile_bush_dark.toUpperCase();
+    const BUSH_MID_HEX = PALETTE.tile_bush_mid.toUpperCase();
+    for (const zone of [ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE]) {
+      const frame = getFrame(bushImg, FRAME_SIZE, 0, zone); // col 0 = layer 0(바탕)
+      let dark = 0;
+      let mid = 0;
+      let total = 0;
+      for (let y = 0; y < FRAME_SIZE; y++) {
+        for (let x = 0; x < FRAME_SIZE; x++) {
+          const i = (y * FRAME_SIZE + x) * 4;
+          if (frame[i + 3] === 0) continue;
+          total++;
+          const hex = `#${[frame[i], frame[i + 1], frame[i + 2]]
+            .map((v) => v.toString(16).padStart(2, '0'))
+            .join('')}`.toUpperCase();
+          if (hex === BUSH_DARK_HEX) dark++;
+          else if (hex === BUSH_MID_HEX) mid++;
+        }
+      }
+      const label = ZONE_LABELS[zone];
+      if (total === 0) {
+        fail(`[Z-B1] tile_bush.png zone=${label}: 알파≠0 픽셀이 0개`);
+        continue;
+      }
+      const bushPct = ((dark + mid) / total) * 100;
+      const midPct = (mid / total) * 100;
+      if (bushPct < 50) fail(`[Z-B1] tile_bush.png zone=${label}: dark+mid 면적비 ${bushPct.toFixed(1)}% (<50%)`);
+      if (midPct < 10) fail(`[Z-B1] tile_bush.png zone=${label}: mid 면적비 ${midPct.toFixed(1)}% (<10%)`);
+      notes.push(`[Z-B1 실측] ${label}: dark+mid=${bushPct.toFixed(1)}% mid=${midPct.toFixed(1)}% (문턱 50%/10%)`);
+    }
+  }
+}
+
+// ---- C11/C12 (docs/SPEC_ZONES.md §2.5·§2.6-a) — 은신처 판별. 면적가중 평균 RGB 거리, 문턱 35 ----
+// 2026-08-07 정정(gd 확정, SPEC_ZONES.md §2.6-a): 이전 판은 wall̄을 WALL_FACE(y19..31)만으로
+// 측정했다 — tech가 스펙 공백에서 임의로 색·좌표를 고쳐 통과시키지 않고 정의를 gd에 되돌려
+// 보낸 결과다(하네스 15). gd 판정: C11/C12가 묻는 질문은 "이 덩어리를 지나갈 수 있는가"이고,
+// 플레이어는 벽을 부분(윗면/앞면)으로 보지 않는다 — **wall̄ = tile_wall variant0 프레임
+// 전체(y 0..31, 윗면+경계선+앞면 전부) 평균**이 정의다. C2b/C2d가 윗면·앞면을 나누는 것은
+// "벽 안에서 두께가 읽히는가"라는 다른 질문이라 그 선례를 여기로 옮기지 않는다.
+// bush̄ = tile_bush layer0(바탕) 전체 평균, floor̄ = tile_floor variant0 전체 평균(둘 다 32×32
+// 전체가 배경 채움이라 처음부터 불투명 — "면적가중"은 픽셀당 동일 가중의 평균과 같다).
+{
+  const bushImg = images['tile_bush'];
+  const floorImg = images['tile_floor'];
+  const wallImg = images['tile_wall'];
+  if (!bushImg || !floorImg || !wallImg) {
+    fail('[C11/C12] tile_bush.png/tile_floor.png/tile_wall.png 중 하나 이상 없음 — 검사 불가');
+  } else {
+    function meanRgbOfFrame(frame, y0 = 0, y1 = FRAME_SIZE - 1) {
+      let sr = 0;
+      let sg = 0;
+      let sb = 0;
+      let count = 0;
+      for (let y = y0; y <= y1; y++) {
+        for (let x = 0; x < FRAME_SIZE; x++) {
+          const i = (y * FRAME_SIZE + x) * 4;
+          if (frame[i + 3] === 0) continue;
+          sr += frame[i];
+          sg += frame[i + 1];
+          sb += frame[i + 2];
+          count++;
+        }
+      }
+      if (count === 0) return null;
+      return [sr / count, sg / count, sb / count];
+    }
+    function rgbDist(a, b) {
+      return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+    }
+    for (const zone of [ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE]) {
+      const bushMean = meanRgbOfFrame(getFrame(bushImg, FRAME_SIZE, 0, zone));
+      const floorMean = meanRgbOfFrame(getFrame(floorImg, FRAME_SIZE, 0, zone));
+      const wallMean = meanRgbOfFrame(getFrame(wallImg, FRAME_SIZE, 0, zone)); // variant0 프레임 전체(y0..31)
+      const label = ZONE_LABELS[zone];
+      if (!bushMean || !floorMean || !wallMean) {
+        fail(`[C11/C12] zone=${label}: 대표 프레임이 완전 투명 — 측정 불가`);
+        continue;
+      }
+      const c11 = rgbDist(bushMean, floorMean);
+      const c12 = rgbDist(bushMean, wallMean);
+      if (c11 < 35) fail(`[C11] zone=${label}: RGBdist(bush̄,floor̄)=${c11.toFixed(1)} < 35`);
+      if (c12 < 35) fail(`[C12] zone=${label}: RGBdist(bush̄,wall̄)=${c12.toFixed(1)} < 35`);
+      notes.push(`[C11/C12 실측] ${label}: dist(bush,floor)=${c11.toFixed(1)} dist(bush,wall)=${c12.toFixed(1)} (문턱 35, wall̄=variant0 프레임 전체)`);
+    }
+  }
+}
+
+// ---- A22 (신설, docs/SPEC_ZONES.md §2.6-c / C13 / W8) — 숲 벽에 초록 0픽셀 ----
+// "숲에서 초록은 전부 통과 가능하다" — 숲 벽(tile_wall zone=forest, variant 0~3)의 어떤
+// 픽셀도 최대 RGB 채널이 G(녹색)면 안 된다. C12처럼 연속량(문턱 35)이 아니라 이산 판정이라
+// 재발을 구조적으로 막는다.
+{
+  const wallImg = images['tile_wall'];
+  if (!wallImg) {
+    fail('[A22] tile_wall.png 없음 — 검사 불가');
+  } else {
+    let greenCount = 0;
+    let firstViolation = null;
+    for (let variant = 0; variant < 4; variant++) {
+      const frame = getFrame(wallImg, FRAME_SIZE, variant, ZONE_FOREST);
+      for (let y = 0; y < FRAME_SIZE; y++) {
+        for (let x = 0; x < FRAME_SIZE; x++) {
+          const i = (y * FRAME_SIZE + x) * 4;
+          if (frame[i + 3] === 0) continue;
+          const [r, g, b] = [frame[i], frame[i + 1], frame[i + 2]];
+          if (g > r && g > b) {
+            greenCount++;
+            if (!firstViolation) firstViolation = [variant, x, y];
+          }
+        }
+      }
+    }
+    if (greenCount > 0) {
+      fail(
+        `[A22] tile_wall.png zone=숲: 최대 RGB 채널이 G인 픽셀 ${greenCount}개 (0이어야 함, 첫 위반 variant=${firstViolation[0]} (${firstViolation[1]},${firstViolation[2]}))`
+      );
+    }
+  }
+}
+
+// ---- A23 (신설, docs/SPEC_ZONES.md §4.3 P7) — props에 수풀색(tile_bush_*) 0픽셀 ----
+// "소품은 tile_bush_dark·tile_bush_mid를 0px 사용한다" — 상호작용 없는 장식이 은신처와
+// 같은 색이면 거짓 어포던스가 된다(§4.5). 12프레임 전부 대상.
+{
+  const propsImg = images['props'];
+  if (!propsImg) {
+    fail('[A23] props.png 없음 — 검사 불가');
+  } else {
+    const BUSH_HEXES = new Set([PALETTE.tile_bush_dark.toUpperCase(), PALETTE.tile_bush_mid.toUpperCase()]);
+    let bushCount = 0;
+    for (const zone of [ZONE_FOREST, ZONE_VILLAGE, ZONE_CAVE]) {
+      for (let index = 0; index < 4; index++) {
+        const frame = getFrame(propsImg, FRAME_SIZE, index, zone);
+        for (let i = 0; i < frame.length; i += 4) {
+          if (frame[i + 3] === 0) continue;
+          const hex = `#${[frame[i], frame[i + 1], frame[i + 2]]
+            .map((v) => v.toString(16).padStart(2, '0'))
+            .join('')}`.toUpperCase();
+          if (BUSH_HEXES.has(hex)) bushCount++;
+        }
+      }
+    }
+    if (bushCount > 0) fail(`[A23 P7] props.png: 수풀색(tile_bush_dark/_mid) 픽셀 ${bushCount}개 (0이어야 함)`);
+  }
+}
+
 // ---- 결과 ----
 if (notes.length > 0) {
   console.log('verify-sprites: 참고');
@@ -515,6 +803,9 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`verify-sprites: OK — ${names.length}개 PNG, 8항목(A13 포함) + W2~W5(SPEC_ZONES §3.5) 전부 통과`);
+console.log(
+  `verify-sprites: OK — ${names.length}개 PNG, 8항목(A13 포함) + W2~W5(SPEC_ZONES §3.5) + R1~R4·Z-B1·C11/C12(SPEC_ZONES §4.4/§5.4/§2.6-a) + A22·A23(SPEC_ZONES §2.6-c/§4.3) 전부 통과`
+);
 console.log('verify-sprites: 미구현(범위 밖, ART.md §6 참고): A7 좌우대칭, A10 몸통2색, A11 명도조건, A12 타일이음매');
+console.log('verify-sprites: 미구현(범위 밖, 이번 세션 지시 R1/R2로 한정): P5 무-애니메이션, P6 소품 지배색');
 process.exit(0);
