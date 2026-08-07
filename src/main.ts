@@ -14,7 +14,10 @@ const GAME_HEIGHT = 640;
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  parent: 'app',
+  // index.html의 #app은 (프레임 + 캡션)을 담는 페이지 레이아웃 컨테이너로
+  // 바뀌었다. Phaser는 그 안의 #game-canvas-holder에만 canvas를 붙인다 —
+  // 프레임(padding·border)이 canvas 자신에는 닿지 않게 하기 위함.
+  parent: 'game-canvas-holder',
   width: GAME_WIDTH,
   height: GAME_HEIGHT,
   pixelArt: true,
@@ -40,31 +43,49 @@ const game = new Phaser.Game(config);
  * 특수 사례일 뿐). `pickIntegerScale()`이 N을 고르고, CSS 크기를
  * `960*N/dpr × 640*N/dpr`로 설정한다. 그러면 물리 픽셀 =
  * `(960*N/dpr) * dpr = 960*N`이 되어 N이 정수인 한 백킹스토어 대비 항상
- * 정수배(N:1)로 상쇄된다. dpr=1인 환경에서는 N=1(아래 제약 2에서 후보
- * N=2가 960*2/1=1920>960으로 즉시 걸러짐)이라 CSS 960×640, 지금과 완전히
- * 동일하다(회귀 없음).
+ * 정수배(N:1)로 상쇄된다. dpr=1이고 뷰포트가 960×640(+프레임 여백)보다
+ * 작으면(예: 1920×950 뷰포트는 세로가 부족) N=2 후보(CSS 1920×1280)가
+ * 여유 뷰포트 제약에 걸려 즉시 버려지므로 N=1, CSS 960×640이 나온다 — 지금과
+ * 완전히 동일하다(회귀 없음). 뷰포트가 충분히 크면(예: 2560×1400) N=2를
+ * 그대로 고른다 — 원본 크기·2배 해상도가 공짜로 나온다는 뜻이고, 이건
+ * 의도된 동작이다.
  */
+
+/**
+ * index.html의 페이지 크롬(#page padding + #frame padding/border + #frame↔#caption
+ * gap + #caption 한 줄)이 캔버스 주위에서 실제로 차지하는 여백. 아래 값은 그
+ * CSS 수치에서 그대로 뽑았다(가로: #page padding 8*2 + #frame padding 10*2 +
+ * #frame border 1*2 = 40. 세로: 위 합 40 + #page↔#caption gap 6 + #caption
+ * 한 줄(13px·line-height 1.3 ≈ 17px) ≈ 63). 폰트 렌더링 오차 등을 감안해
+ * 여유를 얹어 반올림했다 — CSS를 고치면 이 값도 같이 맞춰야 한다는 뜻의
+ * 근사치이지, CSS에서 자동으로 읽어오는 값이 아니다.
+ */
+const RESERVED_CHROME_WIDTH_PX = 40;
+const RESERVED_CHROME_HEIGHT_PX = 70;
+
 function pickIntegerScale(dpr: number, viewportWidth: number, viewportHeight: number): number {
   // 제약 1(호출부 요구): N은 양의 정수, 최소 1 — 이 아래로는 못 내려간다.
   let n = 1;
 
-  // N을 2부터 올려보면서, 아래 두 제약을 둘 다 만족하는 가장 큰 N을 찾는다.
-  // dpr이 유한한 한 cssWidth는 candidate에 비례해 무한히 커지므로 반드시
-  // candidate ~ dpr+1 부근에서 제약 2에 걸려 루프가 끝난다(무한루프 아님).
+  // 프레임·캡션이 실제로 차지하는 만큼을 뺀 "캔버스가 쓸 수 있는" 여유
+  // 뷰포트. 여기서 빼지 않으면 프레임을 두른 뒤 캔버스가 뷰포트를 넘칠 수
+  // 있다(index.html 요구사항 6).
+  const availableWidth = viewportWidth - RESERVED_CHROME_WIDTH_PX;
+  const availableHeight = viewportHeight - RESERVED_CHROME_HEIGHT_PX;
+
+  // N을 2부터 올려보면서, 여유 뷰포트 제약을 만족하는 가장 큰 N을 찾는다.
+  // "CSS ≤ 960×640" 제약(원래 화면 크기를 넘지 않아야 한다는 것)은 제거했다
+  // — 큰 모니터에서는 원본보다 크고 선명하게 보여주는 게 오히려 맞다. dpr이
+  // 유한한 한 cssWidth는 candidate에 비례해 무한히 커지므로 반드시
+  // candidate가 커지는 어느 시점에 아래 제약에 걸려 루프가 끝난다(무한루프
+  // 아님).
   for (let candidate = 2; ; candidate += 1) {
     const cssWidth = (GAME_WIDTH * candidate) / dpr;
     const cssHeight = (GAME_HEIGHT * candidate) / dpr;
 
-    // 제약 2(호출부 요구): CSS 크기가 원래 화면 크기(960×640)를 넘지 않는다.
-    // 픽셀아트를 원본보다 키우는 건 이번 목적이 아니다 — 지금까지의 화면
-    // 크기가 기준선이다. 이게 dpr에 대해 N을 사실상 floor(dpr) 이하로 묶는다.
-    if (cssWidth > GAME_WIDTH || cssHeight > GAME_HEIGHT) {
-      break;
-    }
-
-    // 제약 3(호출부 요구): CSS 크기가 뷰포트를 넘지 않는다 — 심사자 화면이
-    // 작을 수 있다.
-    if (cssWidth > viewportWidth || cssHeight > viewportHeight) {
+    // 제약 2(호출부 요구, 프레임·캡션 여유 반영): CSS 크기가 여유 뷰포트를
+    // 넘지 않는다 — 심사자 화면이 작을 수 있고, 프레임·캡션도 자리를 차지한다.
+    if (cssWidth > availableWidth || cssHeight > availableHeight) {
       break;
     }
 
