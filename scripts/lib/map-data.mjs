@@ -1,6 +1,7 @@
 /**
- * map-data.mjs — `src/sim/map.ts`의 `MAP_ROWS` 복제본. scripts/(node mjs)가 실제 맵 문자를
- * 읽어야 하는 곳(소품 배치 검증·미리보기)에서만 쓴다.
+ * map-data.mjs — `src/sim/map.ts`의 `MAPS[0]`(village) `rows` 복제본. scripts/(node mjs)가
+ * 실제 맵 문자를 읽어야 하는 곳(소품 배치 검증·미리보기, verify-sprites.mjs/preview-tiles.mjs)
+ * 에서만 쓴다.
  *
  * 왜 복제인가: scripts/는 Node ESM(.mjs)이고 src/sim/map.ts는 확장자 없는 상대 import를 쓰는
  * TypeScript다. Node 24의 타입 스트리핑으로 .ts를 직접 import해봤지만("실측", 2026-08-07 tech)
@@ -8,8 +9,13 @@
  * moduleResolution(확장자 생략 허용)과 Node ESM의 요구(명시적 확장자)가 다르기 때문이다.
  * `scripts/lib/zones.mjs`가 이미 같은 이유로 `zoneOfRow()`를 복제한 전례를 따른다.
  *
- * 드리프트 위험: 낮다. 이 맵은 GDD 10장 WON'T("맵 2개 이상")에 걸려 있고, SPEC_ZONES.md §1이
- * "src/sim/map.ts 한 글자도 고치지 않는다"고 명시한 대상이라 이번 스펙 수명 동안 바뀌지 않는다.
+ * ✅ 2026-08-07(docs/SPEC_MAPS.md): 맵이 3종(village/forest/cave)이 됐다. 이 파일은 여전히
+ * **`MAPS[0]`(village) 하나만** 복제한다 — verify-sprites.mjs/preview-tiles.mjs가 검사하는
+ * 항목(R3 결정성·R4 앵커/격자 회피 등)은 "propAt()이 어떤 맵에서든 규칙을 지키는가"를 재는
+ * 구조적 검사라 대표 맵 하나로 충분하고, SPEC_MAPS.md §8이 "아트 재작업 0건"을 조건으로
+ * 걸어 뒀으므로 이 도구들을 3맵 인식으로 확장하는 것은 이번 스펙 범위 밖이다.
+ * 이 데이터 자체는 `src/sim/map.ts`의 `MAPS[0].rows`와 한 글자도 다르지 않다(가장 드리프트
+ * 위험이 낮은 맵 — SPEC_MAPS.md §1.2가 "한 글자도 바꾸지 않는다"고 명시한 대상).
  * 값이 갈리면 `src/sim/map.ts`가 원본이다.
  */
 

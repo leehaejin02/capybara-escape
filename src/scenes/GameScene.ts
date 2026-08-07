@@ -2,10 +2,9 @@ import Phaser from 'phaser';
 import { GOBLIN, MISSION, PLAYER, ROUND, SIM, WORLD } from '../config/balance';
 import { createRng } from '../sim/rng';
 import { createInitialState, step } from '../sim/world';
-import { EXIT_POINT, MAP_ROWS, MISSION_POINTS } from '../sim/map';
+import { ACTIVE_ZONE, EXIT_POINT, MAP_ROWS, MISSION_POINTS } from '../sim/map';
 import type { MissionType, SimInput, SimState, Vec2 } from '../sim/types';
 import { UI_HEX, UI_TEXT } from './palette';
-import { zoneOfRow } from './zones';
 import { propAt } from './propPlacement';
 import { playSfx } from '../audio/bgm';
 import {
@@ -17,6 +16,7 @@ import {
 } from './spriteBake';
 import { dirRowFromFacing, ensureWalkAnims, idleFrame, walkAnimKey } from './anims';
 import { MinigameOverlay } from './minigames/MinigameOverlay';
+import { drawPanel, drawHeart, HEART_COLS } from './uiPanel';
 
 /**
  * GameScene — S3 인게임 (GDD 3장). sim의 `SimState`를 매 프레임 그리기만 한다.
@@ -37,8 +37,8 @@ import { MinigameOverlay } from './minigames/MinigameOverlay';
 const MAX_TICKS_PER_FRAME = 10;
 
 /** HUD 텍스트/패널의 화면 좌표. 밸런스 수치가 아니라 UI 레이아웃 상수(px, 캔버스 좌표계). */
-const HUD_HP_BOX_SIZE_PX = 16;
-const HUD_HP_BOX_GAP_PX = 6;
+const HUD_HEART_CELL_PX = 3;
+const HUD_HEART_GAP_PX = 6;
 
 export class GameScene extends Phaser.Scene {
   private state!: SimState;
@@ -132,9 +132,12 @@ export class GameScene extends Phaser.Scene {
     const SHADOW_DEPTH = 0.4;
     const PROP_DEPTH = 0.6;
     const CANOPY_DEPTH = 2000 + WORLD.MAP_HEIGHT_PX + T;
+    // SPEC_MAPS.md R4/§5: 맵마다 테마가 하나로 고정된다 — 더 이상 행마다 zoneOfRow(row)를
+    // 다시 계산하지 않는다(폐기). 활성 맵의 zone은 create()가 createInitialState()를 먼저
+    // 호출해 둔 뒤이므로 이 시점엔 이번 라운드가 고른 맵의 값이다.
+    const zone = ACTIVE_ZONE;
     for (let row = 0; row < MAP_ROWS.length; row++) {
       const line = MAP_ROWS[row];
-      const zone = zoneOfRow(row);
       for (let col = 0; col < line.length; col++) {
         const ch = line[col];
         const x = col * T;
@@ -208,9 +211,9 @@ export class GameScene extends Phaser.Scene {
   private buildHud(): void {
     const { width, height } = this.scale;
 
+    // 픽셀아트 프레임(1px ink 외곽선 + warm_tan 안쪽 강조선) — uiPanel.ts, HUD·타이틀·결과 공통 톤.
     this.hudPanel = this.add.graphics().setScrollFactor(0).setDepth(3000);
-    this.hudPanel.fillStyle(UI_HEX.ink, 0.8);
-    this.hudPanel.fillRect(0, 0, 240, 92);
+    drawPanel(this.hudPanel, 0, 0, 240, 92);
 
     this.hudTimeText = this.add
       .text(12, 10, '', { fontFamily: 'monospace', fontSize: '18px', color: UI_TEXT.capyWhite })
@@ -356,11 +359,11 @@ export class GameScene extends Phaser.Scene {
 
     this.hpGfx.clear();
     const startX = 12;
-    const startY = 62;
+    const startY = 60;
+    const heartWidthPx = HEART_COLS * HUD_HEART_CELL_PX;
     for (let i = 0; i < PLAYER.MAX_HP; i++) {
       const filled = i < s.player.hp;
-      this.hpGfx.fillStyle(filled ? UI_HEX.accentAmber : UI_HEX.capyGrayDark, 1);
-      this.hpGfx.fillRect(startX + i * (HUD_HP_BOX_SIZE_PX + HUD_HP_BOX_GAP_PX), startY, HUD_HP_BOX_SIZE_PX, HUD_HP_BOX_SIZE_PX);
+      drawHeart(this.hpGfx, startX + i * (heartWidthPx + HUD_HEART_GAP_PX), startY, HUD_HEART_CELL_PX, filled ? UI_HEX.accentAmber : UI_HEX.capyGrayDark);
     }
 
     if (s.player.missionIndex !== null) {
@@ -376,8 +379,7 @@ export class GameScene extends Phaser.Scene {
       this.missionGaugeGfx.setVisible(true);
       this.missionGaugeText.setVisible(true);
       this.missionGaugeGfx.clear();
-      this.missionGaugeGfx.fillStyle(UI_HEX.ink, 0.8);
-      this.missionGaugeGfx.fillRect(barX - 10, barY - 26, barW + 20, barH + 34);
+      drawPanel(this.missionGaugeGfx, barX - 10, barY - 26, barW + 20, barH + 34);
       this.missionGaugeGfx.fillStyle(UI_HEX.capyGrayDark, 1);
       this.missionGaugeGfx.fillRect(barX, barY, barW, barH);
       this.missionGaugeGfx.fillStyle(UI_HEX.accentAmber, 1);

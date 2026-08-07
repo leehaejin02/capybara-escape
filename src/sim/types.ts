@@ -87,6 +87,8 @@ export interface MissionPoint {
  * §6.5 라운드 초기 상태 + §8 위험 방어 통계 필드를 포함한다.
  */
 export interface SimState {
+  /** 이 라운드가 고른 맵의 index(0=village/1=forest/2=cave). SPEC_MAPS.md §1.4·O1. */
+  mapIndex: number;
   elapsedSec: number;
   timeRemainingSec: number;
   player: Player;
@@ -108,6 +110,8 @@ export interface SimState {
 
 /** 한 판(에피소드) 시뮬레이션 결과. src/tools/sim-cli.ts가 집계에 쓴다. */
 export interface SimResult {
+  /** 이 라운드가 고른 맵의 index. SPEC_MAPS.md O1(시뮬 JSON의 각 run 레코드에 포함). */
+  mapIndex: number;
   cleared: boolean;
   timeRemainingSec: number;
   hits: number;

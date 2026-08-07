@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>이세계 카피바라 — Capybara Escape</title>
+    <style>
+      /* 캔버스를 페이지 중앙에 놓는다. 게임 규칙과 무관한 페이지 레이아웃이라 balance.ts 대상이 아니다. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b090e;
+      }
+      #app {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100%;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

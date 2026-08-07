@@ -1,5 +1,5 @@
 import { HIDING, PLAYER, ROUND, SIM } from '../config/balance';
-import { EXIT_POINT, GOBLIN_ROUTES, MISSION_POINTS, PLAYER_START, tileCharAt } from './map';
+import { EXIT_POINT, GOBLIN_ROUTES, MISSION_POINTS, PLAYER_START, selectMap, tileCharAt } from './map';
 import { handleMissionTick, selectActiveMissions } from './mission';
 import { updateGoblin } from './goblin';
 import { moveAxisX, moveAxisY } from './movement';
@@ -87,8 +87,17 @@ function checkEnd(state: SimState): void {
   }
 }
 
-/** §6.5 라운드 초기 상태. */
-export function createInitialState(rng: RNG): SimState {
+/**
+ * §6.5 라운드 초기 상태.
+ *
+ * `forcedMapIndex`(SPEC_MAPS.md O2, `sim-cli --map=N`)가 주어지면 그 맵을 강제로 쓴다 —
+ * 측정 전용이다. 실제 플레이(GameScene)는 이 인자를 절대 넘기지 않는다.
+ */
+export function createInitialState(rng: RNG, forcedMapIndex?: number): SimState {
+  // SPEC_MAPS.md §1.4: 맵 선택이 라운드 RNG의 **첫 번째** 소비다. MISSION_POINTS 등을
+  // 읽기 전에 반드시 먼저 호출해야 활성 맵의 값을 읽는다(map.ts의 live binding).
+  const { mapIndex } = selectMap(rng, forcedMapIndex);
+
   const missions: MissionPoint[] = MISSION_POINTS.map((m) => ({
     index: m.index,
     pos: m.pos,
@@ -129,6 +138,7 @@ export function createInitialState(rng: RNG): SimState {
   };
 
   return {
+    mapIndex,
     elapsedSec: 0,
     timeRemainingSec: ROUND.TIME_LIMIT_SEC,
     player,
@@ -179,9 +189,12 @@ export function step(state: SimState, input: SimInput, dt: number): void {
   state.elapsedSec += dt;
 }
 
-/** 한 판(에피소드)을 끝까지 시뮬레이션한다. `rng`는 미션 선정(§5.6)과 봇 정책(§7)이 공유한다. */
-export function runEpisode(rng: RNG): SimResult {
-  const state = createInitialState(rng);
+/**
+ * 한 판(에피소드)을 끝까지 시뮬레이션한다. `rng`는 맵 선정(SPEC_MAPS.md §1.4)·미션 선정(§5.6)·
+ * 봇 정책(§7)이 공유한다. `forcedMapIndex`는 sim-cli `--map=N` 전용(SPEC_MAPS.md O2).
+ */
+export function runEpisode(rng: RNG, forcedMapIndex?: number): SimResult {
+  const state = createInitialState(rng, forcedMapIndex);
   const bot = createBotPolicy();
   const dt = SIM.TIMESTEP_SEC;
   // 안전 상한: timeRemainingSec가 정상적으로 0 이하가 되기까지 필요한 틱 수 + 여유.
@@ -201,6 +214,7 @@ export function runEpisode(rng: RNG): SimResult {
   }
 
   return {
+    mapIndex: state.mapIndex,
     cleared: state.cleared,
     timeRemainingSec: Math.max(state.timeRemainingSec, 0),
     hits: state.hits,

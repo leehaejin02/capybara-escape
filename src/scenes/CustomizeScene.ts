@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { UI_TEXT } from './palette';
+import { addCozySkyBackground } from './background';
+import { drawPanel } from './uiPanel';
 import {
   DEFAULT_SELECTION,
   PLAYER_TEXTURE_KEY,
@@ -19,14 +21,30 @@ import {
  * GameScene·ResultScene이 그대로 읽는다 (GDD 11장 2번 — 커스터마이즈 반영 필수).
  *
  * 이 씬은 렌더링만 한다. 게임 규칙 판정은 없다 (CLAUDE.md 아키텍처 3).
+ *
+ * S1(BootScene)·S4(ResultScene)와 같은 어휘를 그대로 재사용한다(새 컴포넌트를 만들지 않는다):
+ * `addCozySkyBackground`(하늘 배경) + `drawPanel`(ink 패널 — 미리보기 받침 1개, 항목+입장 버튼 1개).
  */
 
 const BODY_NAMES = ['기본갈색', '연갈색', '회색', '흰색'];
 const OUTFIT_NAMES = ['없음', '멜빵바지', '수건', '우비', '작업복'];
 const HAT_NAMES = ['없음', '밀짚모자', '유자', '헬멧'];
 
-/** 미리보기 확대 배율. 정수 스케일만(GDD 8장 — 픽셀아트 서브픽셀 금지). */
-const PREVIEW_SCALE = 4;
+/** BootScene·ResultScene과 같은 하늘 텍스처 키 — 이미 구워져 있으면 재사용한다(background.ts). */
+const SKY_BG_KEY = 'ui_cozy_sky';
+
+/** 미리보기 확대 배율. 정수 스케일만(GDD 8장 — 픽셀아트 서브픽셀 금지).
+ * 커스터마이즈의 주인공이 부속품처럼 보이지 않도록 이전(4)보다 키운다. */
+const PREVIEW_SCALE = 6;
+/** 미리보기 받침 패널이 스프라이트 테두리에서 얼마나 여유를 두는지(px). */
+const PREVIEW_PANEL_PAD_X = 40;
+const PREVIEW_PANEL_PAD_Y = 18;
+/** 미리보기 받침 패널 상단 y좌표. */
+const PREVIEW_PANEL_TOP = 54;
+
+/** 항목 패널 안쪽 여백(px). BootScene 조작키 패널과 같은 상수 값(28/16)을 쓴다 — 톤 통일. */
+const ITEMS_PANEL_PAD_X = 28;
+const ITEMS_PANEL_PAD_Y = 20;
 
 type Category = 'body' | 'outfit' | 'hat';
 
@@ -50,48 +68,79 @@ export class CustomizeScene extends Phaser.Scene {
     this.selection = stored ? { ...stored } : { ...DEFAULT_SELECTION };
 
     const { width } = this.scale;
-    this.cameras.main.setBackgroundColor(UI_TEXT.ink);
 
+    // BootScene·ResultScene과 같은 하늘 배경(검은 배경 대신). 맨 먼저 그려 최하단에 깐다.
+    addCozySkyBackground(this, width, this.scale.height, SKY_BG_KEY);
+
+    // 밝은 하늘 위라 흰 글자만으로는 대비가 약하다 — ink 외곽선을 둘러 어떤 배경에서도 읽히게 한다.
     this.add
-      .text(width / 2, 36, '카피바라 꾸미기', { fontFamily: 'monospace', fontSize: '28px', color: UI_TEXT.capyWhite })
+      .text(width / 2, 32, '카피바라 꾸미기', {
+        fontFamily: 'monospace',
+        fontSize: '28px',
+        color: UI_TEXT.capyWhite,
+        stroke: UI_TEXT.ink,
+        strokeThickness: 4,
+      })
       .setOrigin(0.5);
+
+    // ── 미리보기 받침(uiPanel.drawPanel) — 확대한 카피바라를 패널 위에 올려 주인공으로 세운다. ──
+    const previewSpritePx = 32 * PREVIEW_SCALE;
+    const previewPanelW = previewSpritePx + PREVIEW_PANEL_PAD_X * 2;
+    const previewPanelH = previewSpritePx + PREVIEW_PANEL_PAD_Y * 2;
+    const previewPanelX = width / 2 - previewPanelW / 2;
+    const previewPanelGfx = this.add.graphics();
+    drawPanel(previewPanelGfx, previewPanelX, PREVIEW_PANEL_TOP, previewPanelW, previewPanelH);
 
     // ── 미리보기(down, frame 0 고정) — 3레이어를 그대로 겹쳐 보여준다. 게임플레이 무영향(GDD 4장). ──
     const previewX = width / 2;
-    const previewY = 190;
+    const previewY = PREVIEW_PANEL_TOP + previewPanelH / 2;
     this.previewBody = this.add.image(previewX, previewY, bodyTextureKey(this.selection.bodyIndex), 0).setScale(PREVIEW_SCALE);
     this.previewOutfit = this.add
       .image(previewX, previewY, outfitTextureKey(this.selection.outfitIndex), 0)
       .setScale(PREVIEW_SCALE);
     this.previewHat = this.add.image(previewX, previewY, hatTextureKey(this.selection.hatIndex), 0).setScale(PREVIEW_SCALE);
 
-    // ── 3개 선택 행 ──
-    const rowY: Record<Category, number> = { body: 340, outfit: 390, hat: 440 };
+    // ── 3개 선택 행 + 입장 버튼 — 먼저 실제 요소를 만들고, 그 바운즈를 재서 패널을 뒤에 그린다.
+    // (BootScene/ResultScene 조작키 패널과 같은 방식 — 폰트 폴백으로 폭이 바뀌어도 안 밀린다.)
+    const itemsTop = PREVIEW_PANEL_TOP + previewPanelH + 20;
+    const rowY: Record<Category, number> = { body: itemsTop + 28, outfit: itemsTop + 74, hat: itemsTop + 120 };
+    const confirmY = itemsTop + 170;
     const rowLabel: Record<Category, string> = { body: '몸', outfit: '옷', hat: '모자' };
+
+    const itemsBounds: Phaser.GameObjects.Text[] = [];
 
     (['body', 'outfit', 'hat'] as Category[]).forEach((cat) => {
       const y = rowY[cat];
-      this.add.text(width / 2 - 260, y, rowLabel[cat], { fontFamily: 'monospace', fontSize: '18px', color: UI_TEXT.capyGrayMid });
+      const nameTag = this.add.text(width / 2 - 260, y, rowLabel[cat], {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: UI_TEXT.capyGrayMid,
+      });
+      itemsBounds.push(nameTag);
 
       const leftBtn = this.add
         .text(width / 2 - 140, y, '<', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
       leftBtn.on('pointerdown', () => this.cycle(cat, -1));
+      itemsBounds.push(leftBtn);
 
       const rightBtn = this.add
         .text(width / 2 + 140, y, '>', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
       rightBtn.on('pointerdown', () => this.cycle(cat, 1));
+      itemsBounds.push(rightBtn);
 
       const label = this.add
         .text(width / 2, y, '', { fontFamily: 'monospace', fontSize: '18px', color: UI_TEXT.capyWhite })
         .setOrigin(0.5);
       this.rowTexts[cat] = label;
+      itemsBounds.push(label);
 
       const focusMark = this.add.text(width / 2 - 200, y, '', { fontFamily: 'monospace', fontSize: '18px', color: UI_TEXT.accentAmber });
       this.rowFocusMarks[cat] = focusMark;
+      itemsBounds.push(focusMark);
 
       const hitZone = this.add.zone(width / 2, y, 320, 34).setInteractive({ useHandCursor: true });
       hitZone.on('pointerdown', () => {
@@ -101,16 +150,37 @@ export class CustomizeScene extends Phaser.Scene {
     });
 
     const confirmBtn = this.add
-      .text(width / 2, 540, '[ 입장 ]', { fontFamily: 'monospace', fontSize: '24px', color: UI_TEXT.accentAmber })
+      .text(width / 2, confirmY, '[ 입장 ]', { fontFamily: 'monospace', fontSize: '24px', color: UI_TEXT.accentAmber })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     confirmBtn.on('pointerdown', () => this.confirm());
+    itemsBounds.push(confirmBtn);
 
+    // 항목 3줄 + 입장 버튼을 감싸는 패널 — 만든 요소들의 실측 바운즈로 크기를 정한다.
+    const maxRight = Math.max(...itemsBounds.map((t) => t.getBounds().right));
+    const minLeft = Math.min(...itemsBounds.map((t) => t.getBounds().left));
+    const minTop = Math.min(...itemsBounds.map((t) => t.getBounds().top));
+    const maxBottom = Math.max(...itemsBounds.map((t) => t.getBounds().bottom));
+    const itemsPanelGfx = this.add.graphics();
+    drawPanel(
+      itemsPanelGfx,
+      minLeft - ITEMS_PANEL_PAD_X,
+      minTop - ITEMS_PANEL_PAD_Y,
+      maxRight - minLeft + ITEMS_PANEL_PAD_X * 2,
+      maxBottom - minTop + ITEMS_PANEL_PAD_Y * 2
+    );
+    // 패널을 나중에 그리면 위에 덮이므로, 항목 요소들을 다시 앞으로 올린다(BootScene과 같은 처리).
+    itemsBounds.forEach((t) => t.setDepth(1));
+    itemsPanelGfx.setDepth(0);
+
+    const hintY = Math.max(confirmY + 46, this.scale.height - 40);
     this.add
-      .text(width / 2, 585, '↑↓ 항목 선택 · ←→ 변경 · Enter/클릭 입장', {
+      .text(width / 2, hintY, '↑↓ 항목 선택 · ←→ 변경 · Enter/클릭 입장', {
         fontFamily: 'monospace',
         fontSize: '13px',
         color: UI_TEXT.capyGrayMid,
+        stroke: UI_TEXT.ink,
+        strokeThickness: 2,
       })
       .setOrigin(0.5);
 

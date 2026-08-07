@@ -14,6 +14,8 @@ export const UI_TEXT = {
   capyGrayMid: '#94919E',
   capyGrayDark: '#4E4B57',
   accentAmber: '#F2B03C',
+  /** ART.md §1.1 idx 23. 패널 테두리(HUD·타이틀 조작키 박스·결과 화면)용. */
+  warmTan: '#B98F4E',
 } as const;
 
 /** Phaser Graphics `fillStyle`/`lineStyle` 숫자(0xRRGGBB) 형식 — 문자열과 동일한 색의 다른 표현. */
@@ -27,4 +29,16 @@ export const UI_HEX = {
   goblinMid: 0x8fd64f,
   /** ART.md §1.1 idx 14 `tile_spa`. 미니게임 UI(M1/M3 색 구분)용. */
   tileSpa: 0x3e7e94,
+  /** ART.md §1.1 idx 23 `warm_tan`. 패널 테두리 안쪽 강조선. */
+  warmTan: 0xb98f4e,
+} as const;
+
+/**
+ * ART.md §1.1 idx 28·29 — S1(타이틀)·S2(커스터마이즈)·S4(결과) 배경 전용. **PNG 금지(§2.3), Graphics/Text 전용.**
+ * `background.ts`의 `addCozySkyBackground`를 통해서만 쓰고, 맵이 배경인 GameScene(HUD)에는 쓰지 않는다
+ * (팔레트 예산이 그 용도로만 잡혀 있다).
+ */
+export const SKY_HEX = {
+  skyPink: 0xf0b9c4,
+  skySoft: 0x8fc7e0,
 } as const;

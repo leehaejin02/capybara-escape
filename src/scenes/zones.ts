@@ -1,20 +1,18 @@
 /**
- * zones.ts — 맵 세로 3분할(구역). docs/SPEC_ZONES.md §5.1이 원본.
+ * zones.ts — 렌더 테마 상수. docs/SPEC_MAPS.md §5가 원본(이전 docs/SPEC_ZONES.md §5.1을 대체).
  *
- * 렌더 전용이다. `src/sim/`은 구역의 존재를 모른다(SPEC_ZONES.md §1, CLAUDE.md 하네스 1) —
- * 이 파일은 src/scenes/에서만 쓴다. 생성 스크립트(scripts/)에서 쓰는 동일 로직은
- * `scripts/lib/zones.mjs`에 따로 있다 — node(mjs) 빌드와 vite(ts) 빌드가 분리돼 있어
- * 모듈을 공유할 수 없어 부득이하게 중복한다. 값이 갈리면 SPEC_ZONES.md §5.1이 원본이다.
+ * ✅ 2026-08-07: `zoneOfRow(row)` 폐기(SPEC_MAPS.md R4). 맵이 3개가 되면서 "행 범위로 구역을
+ * 나누는" 방식은 더 이상 쓰지 않는다 — 맵마다 테마가 하나로 고정되고, 그 값은
+ * `src/sim/map.ts`의 `MapDef.zone`(라운드 중엔 `ACTIVE_ZONE` 라이브 바인딩)이 원본이다.
+ * 렌더 씬(`GameScene.ts`·`propPlacement.ts`)은 그 값을 그대로 읽는다.
+ *
+ * 이 파일에는 이제 zone id 상수만 남는다. `scripts/lib/zones.mjs`가 Node(art 생성/미리보기
+ * 스크립트) 쪽 동일 상수를 별도로 갖는다 — vite(ts)와 node(mjs) 빌드가 분리돼 있어 모듈을
+ * 공유할 수 없다(기존과 같은 이유). 값이 갈리면 이 문서(SPEC_MAPS.md §5)가 원본이고 `src/sim/map.ts`의
+ * `MAPS[i].zone`과도 일치해야 한다.
  */
 
 export const ZONE_FOREST = 0;
 export const ZONE_VILLAGE = 1;
 export const ZONE_CAVE = 2;
 export const ZONE_COUNT = 3;
-
-/** SPEC_ZONES.md §5.1: `zoneOfRow(row) = row < 13 ? 숲 : (row < 25 ? 마을 : 동굴)`. */
-export function zoneOfRow(row: number): number {
-  if (row < 13) return ZONE_FOREST;
-  if (row < 25) return ZONE_VILLAGE;
-  return ZONE_CAVE;
-}
