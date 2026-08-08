@@ -40,6 +40,20 @@ const MAX_TICKS_PER_FRAME = 10;
 const HUD_HEART_CELL_PX = 3;
 const HUD_HEART_GAP_PX = 6;
 
+/**
+ * 대시 게이지 줄의 화면 좌표. 밸런스 수치가 아니라 UI 레이아웃 상수(px, 캔버스 좌표계) —
+ * 대시 지속·쿨다운 "값"은 balance.ts의 PLAYER.DASH_*에서 읽고, 여기 있는 숫자는 그 값을
+ * 그릴 막대의 위치·크기일 뿐이다(하네스 2는 밸런스 수치에 적용되지, 픽셀 좌표엔 적용되지 않는다).
+ */
+const HUD_DASH_LABEL_X = 12;
+const HUD_DASH_ROW_Y = 88;
+const HUD_DASH_BAR_X = 64;
+const HUD_DASH_BAR_W = 130;
+const HUD_DASH_BAR_H = 12;
+const HUD_DASH_TIME_TEXT_X = HUD_DASH_BAR_X + HUD_DASH_BAR_W + 6;
+/** HUD 패널 전체 높이. 하트 아래에 대시 게이지 한 줄을 더 넣기 위해 92 → 116으로 확장. 폭 240은 유지. */
+const HUD_PANEL_HEIGHT_PX = 116;
+
 export class GameScene extends Phaser.Scene {
   private state!: SimState;
   private accumulatorSec = 0;
@@ -58,6 +72,9 @@ export class GameScene extends Phaser.Scene {
   private hudTimeText!: Phaser.GameObjects.Text;
   private hudMissionText!: Phaser.GameObjects.Text;
   private hpGfx!: Phaser.GameObjects.Graphics;
+  private dashGaugeGfx!: Phaser.GameObjects.Graphics;
+  private dashLabelText!: Phaser.GameObjects.Text;
+  private dashTimeText!: Phaser.GameObjects.Text;
   private missionGaugeGfx!: Phaser.GameObjects.Graphics;
   private missionGaugeText!: Phaser.GameObjects.Text;
   private minigames!: MinigameOverlay;
@@ -213,7 +230,7 @@ export class GameScene extends Phaser.Scene {
 
     // 픽셀아트 프레임(1px ink 외곽선 + warm_tan 안쪽 강조선) — uiPanel.ts, HUD·타이틀·결과 공통 톤.
     this.hudPanel = this.add.graphics().setScrollFactor(0).setDepth(3000);
-    drawPanel(this.hudPanel, 0, 0, 240, 92);
+    drawPanel(this.hudPanel, 0, 0, 240, HUD_PANEL_HEIGHT_PX);
 
     this.hudTimeText = this.add
       .text(12, 10, '', { fontFamily: 'monospace', fontSize: '18px', color: UI_TEXT.capyWhite })
@@ -224,6 +241,16 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(3001);
     this.hpGfx = this.add.graphics().setScrollFactor(0).setDepth(3001);
+
+    this.dashGaugeGfx = this.add.graphics().setScrollFactor(0).setDepth(3001);
+    this.dashLabelText = this.add
+      .text(HUD_DASH_LABEL_X, HUD_DASH_ROW_Y - 2, '대시', { fontFamily: 'monospace', fontSize: '14px', color: UI_TEXT.capyWhite })
+      .setScrollFactor(0)
+      .setDepth(3002);
+    this.dashTimeText = this.add
+      .text(HUD_DASH_TIME_TEXT_X, HUD_DASH_ROW_Y - 2, '', { fontFamily: 'monospace', fontSize: '12px', color: UI_TEXT.capyWhite })
+      .setScrollFactor(0)
+      .setDepth(3002);
 
     this.missionGaugeGfx = this.add.graphics().setScrollFactor(0).setDepth(3000).setVisible(false);
     this.missionGaugeText = this.add
@@ -366,6 +393,8 @@ export class GameScene extends Phaser.Scene {
       drawHeart(this.hpGfx, startX + i * (heartWidthPx + HUD_HEART_GAP_PX), startY, HUD_HEART_CELL_PX, filled ? UI_HEX.accentAmber : UI_HEX.capyGrayDark);
     }
 
+    this.renderDashGauge(s.player.dashSec, s.player.dashCooldownSec);
+
     if (s.player.missionIndex !== null) {
       const type = s.missions[s.player.missionIndex].type;
       const duration = this.missionDurationSec(type);
@@ -391,6 +420,42 @@ export class GameScene extends Phaser.Scene {
       this.missionGaugeGfx.setVisible(false);
       this.missionGaugeText.setVisible(false);
     }
+  }
+
+  /**
+   * 대시 게이지 한 줄 — 값은 sim이 이미 감소시켜 둔 `player.dashSec`/`dashCooldownSec`을
+   * 읽기만 한다(하네스 3, `src/sim/` 미수정). 채움 비율 계산에 쓰는 유일한 밸런스 상수는
+   * `PLAYER.DASH_COOLDOWN_SEC`이고, 이 씬은 그 상수를 리터럴로 베끼지 않고 balance.ts에서
+   * 그대로 import해 쓴다.
+   *
+   * `dashCooldownSec`은 world.ts가 매 틱 빼기만 해 음수까지 내려갈 수 있으므로
+   * 반드시 `Phaser.Math.Clamp`로 0~1에 묶는다 — 안 그러면 막대가 넘친다.
+   */
+  private renderDashGauge(dashSec: number, dashCooldownSec: number): void {
+    this.dashGaugeGfx.clear();
+    this.dashGaugeGfx.fillStyle(UI_HEX.capyGrayDark, 1);
+    this.dashGaugeGfx.fillRect(HUD_DASH_BAR_X, HUD_DASH_ROW_Y, HUD_DASH_BAR_W, HUD_DASH_BAR_H);
+
+    let ratio: number;
+    let color: number;
+    let timeLabel: string;
+    if (dashSec > 0) {
+      ratio = 1;
+      color = UI_HEX.capyWhite;
+      timeLabel = '';
+    } else if (dashCooldownSec > 0) {
+      ratio = Phaser.Math.Clamp(1 - dashCooldownSec / PLAYER.DASH_COOLDOWN_SEC, 0, 1);
+      color = UI_HEX.warmTan;
+      timeLabel = dashCooldownSec.toFixed(1);
+    } else {
+      ratio = 1;
+      color = UI_HEX.accentAmber;
+      timeLabel = '';
+    }
+
+    this.dashGaugeGfx.fillStyle(color, 1);
+    this.dashGaugeGfx.fillRect(HUD_DASH_BAR_X, HUD_DASH_ROW_Y, HUD_DASH_BAR_W * ratio, HUD_DASH_BAR_H);
+    this.dashTimeText.setText(timeLabel);
   }
 
   /**

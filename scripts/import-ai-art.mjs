@@ -351,6 +351,47 @@ function measureNeckFrac(body) {
   return Math.min(0.72, (neckY - bb.y0) / h);
 }
 
+
+/**
+ * 의상을 몸통 실루엣까지 좌우로 늘려 붙인다.
+ *
+ * AI가 옷을 **정면 비례로만** 그려서 옆모습에서 몸통보다 좁다(실측 2026-08-08:
+ * 몸통 24~25px vs 옷 18px → 앞뒤로 3~4px씩 갈색이 삐져나온다. 사용자가 인게임에서
+ * "엉덩이 부분이 옷이 안 입혀진 것처럼 보인다"고 지적한 게 이것이다).
+ *
+ * 늘릴 때 가장자리 색을 그대로 복사하면 외곽선(어두운 색)이 번진다. 그래서
+ * **안쪽 채움색으로 채우고 맨 끝 한 칸만 원래 외곽선 색**으로 다시 찍는다.
+ * 몸통이 불투명한 칸까지만 늘리므로 실루엣 밖으로는 절대 나가지 않는다.
+ */
+function hugBody(itemSheet, body, dir) {
+  const IW = itemSheet.width, BW = body.width;
+  const at = (img, W, x, y) => (y * W + x) * 4;
+  for (let y = 0; y < TILE; y++) {
+    const row = dir * TILE + y;
+    let oL = -1, oR = -1, bL = -1, bR = -1;
+    for (let x = 0; x < TILE; x++) {
+      if (itemSheet.data[at(itemSheet, IW, x, row) + 3] > 8) { if (oL < 0) oL = x; oR = x; }
+      if (body.data[at(body, BW, x, row) + 3] > 8) { if (bL < 0) bL = x; bR = x; }
+    }
+    if (oL < 0 || bL < 0) continue;
+    const put = (x, src) => {
+      const d = at(itemSheet, IW, x, row), t = at(itemSheet, IW, src, row);
+      itemSheet.data[d] = itemSheet.data[t]; itemSheet.data[d + 1] = itemSheet.data[t + 1];
+      itemSheet.data[d + 2] = itemSheet.data[t + 2]; itemSheet.data[d + 3] = 255;
+    };
+    if (bL < oL) {
+      const fill = Math.min(oL + 1, TILE - 1);
+      for (let x = bL; x < oL; x++) put(x, fill);
+      put(bL, oL); // 맨 끝 한 칸은 원래 외곽선 색
+    }
+    if (bR > oR) {
+      const fill = Math.max(oR - 1, 0);
+      for (let x = oR + 1; x <= bR; x++) put(x, fill);
+      put(bR, oR);
+    }
+  }
+}
+
 /** 몸 색 변형. 명도·채도만 건드린다 — 형태와 외곽선은 그대로 둔다. */
 function recolorBody(sheet, mode) {
   const out = new Uint8ClampedArray(sheet.data);
@@ -516,6 +557,8 @@ if (existsSync(capySrc)) {
     console.log(`  목선 비율 ${(neckFrac * 100).toFixed(0)}% (얼굴 실측 기반)`);
     for (let row = 0; row < 4; row++) {
       const s = layoutItemSheet(outfits, row, body, 'body', 1, neckFrac);
+      // 배치가 끝난 뒤 몸통 실루엣까지 늘린다(방향마다 몸통 폭이 달라 배치만으로는 안 덮인다).
+      for (let dir = 0; dir < 4; dir++) hugBody(s, body, dir);
       writeFileSync(join(OUT_DIR, `capy_outfit_0${row + 1}.png`), encodePng(s.width, s.height, s.data));
     }
     console.log('write capy_outfit_01..04');
