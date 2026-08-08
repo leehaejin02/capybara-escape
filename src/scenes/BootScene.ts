@@ -70,11 +70,18 @@ export class BootScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const base = import.meta.env.BASE_URL;
+    /*
+     * `?v=` — 캐시 무효화. `public/assets/*.png`는 Vite가 해시를 안 붙이고 그대로 복사하므로,
+     * 그림을 바꿔 배포해도 URL이 같아 **이미 방문한 브라우저는 옛 파일을 계속 쓴다.**
+     * 실측(2026-08-08): 아트 교체 배포 직후에도 `transfer: 0`으로 923B짜리 옛 파일을 썼다
+     * (서버 파일은 3,430B). 값의 출처와 이유는 `vite.config.ts` 주석 참조.
+     */
+    const v = `?v=${__ASSET_VERSION__}`;
     for (const s of SPRITESHEETS) {
-      this.load.spritesheet(s.key, `${base}assets/${s.key}.png`, { frameWidth: s.frameWidth, frameHeight: s.frameHeight });
+      this.load.spritesheet(s.key, `${base}assets/${s.key}.png${v}`, { frameWidth: s.frameWidth, frameHeight: s.frameHeight });
     }
     for (const key of IMAGES) {
-      this.load.image(key, `${base}assets/${key}.png`);
+      this.load.image(key, `${base}assets/${key}.png${v}`);
     }
   }
 
