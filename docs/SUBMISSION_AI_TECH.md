@@ -428,7 +428,7 @@ dpr 2.0(레티나) 환경은 계산값이고 실측이 아니다 · 미니게임
 
 | 항목 | 개수 | 출처 | 라이선스 |
 |---|---|---|---|
-| **스프라이트·타일 PNG** — 캐릭터·타일·소품 | **16종** | **저장소 소유자가 Google Gemini로 생성**(2026-08-08) 후 `scripts/import-ai-art.mjs`가 32×32 규격으로 변환. 원본은 `public/assets/source/`에 보존 | 생성자 본인 소유 |
+| **스프라이트·타일 PNG** — 캐릭터·타일·소품 | **16종** | **저장소 소유자가 Google Gemini로 생성**(2026-08-08) 후 `scripts/import-ai-art.mjs`가 32×32 규격으로 변환. 원본은 `art-source/`에 보존 | 생성자 본인 소유 |
 | **스프라이트·타일 PNG** — 나머지 (`marker_exit` · `marker_mission` · `tile_bush` · `tile_spa` · `tile_shadow` · `capy_hat_00` · `capy_outfit_00`) | **7종** | **우리 코드가 생성** — `scripts/gen-sprites.mjs` (무의존, Node 내장 `zlib`만 사용해 PNG를 직접 인코딩) | 자체 제작 |
 | **사운드 (BGM + 효과음)** | mp3/ogg **0건** | **Web Audio API로 실시간 합성** — `src/audio/bgm.ts`. 파일 주석 원문: *"외부 오디오 에셋 0건 (mp3/ogg 다운로드 없음) — 전부 이 파일의 코드가 곧 악보다."* | 자체 제작 |
 | **폰트** | 0건 | 웹폰트 미도입. 브라우저 기본 `monospace` / `system-ui` 스택만 사용 | — |
@@ -448,7 +448,7 @@ dpr 2.0(레티나) 환경은 계산값이고 실측이 아니다 · 미니게임
 2. **수정 이력.** 원본 PNG는 이미지 편집기의 투명 표시 격자가 **실제 불투명 픽셀로 구워진 채**였다
    (타이틀 화면에 회색 체커보드가 그대로 보였다). `scripts/fix-logo-alpha.mjs`(무의존)로 배경에서
    flood fill해 알파만 0으로 바꿨고, **로고 본체 픽셀의 색은 바뀌지 않았다.**
-   **원본은 `public/assets/source/logo_title_raw.png`에 보존**돼 있다.
+   **원본은 `art-source/logo_title_raw.png`에 보존**돼 있다.
 
 ### 8.2 시각 레퍼런스 (참고만 함 — 저장소·빌드 미포함)
 

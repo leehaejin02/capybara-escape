@@ -299,7 +299,7 @@ UI 글자 겹침에서 **코디네이터가 "웹폰트 로딩 타이밍"을 원�
 
 1. **로고에 체커보드가 픽셀로 구워져 있었다** — 편집기의 투명 표시 격자가 그대로 저장됨.
    가장자리에서 무채색만 flood fill로 알파 0 처리(`scripts/fix-logo-alpha.mjs`).
-   원본은 `public/assets/source/logo_title_raw.png`에 백업. **타이틀은 영상 첫 프레임이자 PDF 대표 이미지다**
+   원본은 `art-source/logo_title_raw.png`에 백업. **타이틀은 영상 첫 프레임이자 PDF 대표 이미지다**
 2. **판정 PNG에 드롭섀도가 빠져 있었다** — `preview-tiles.mjs`가 `tile_shadow`를 안 그렸다.
    §9가 "최대의 베팅"이라 지목한 그림이 **3단 중 1단을 빼고** 찍힐 뻔했다
 3. **`propPlacement`의 `ANCHORS`가 모듈 로드 시 1회 캐시였다** — `MAP_ROWS`가 라이브 바인딩이 되면서

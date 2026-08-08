@@ -26,7 +26,7 @@
  *   - sky_soft(#8FC7E0)·ink(#16121C) 배경 위에 합성해 가장자리에 회색 헤일로가 남지 않는지 확인.
  *
  * 실행: `node scripts/fix-logo-alpha.mjs`
- * 원본은 덮어쓰지 않는다 — public/assets/source/logo_title_raw.png에 먼저 백업하고,
+ * 원본은 덮어쓰지 않는다 — art-source/logo_title_raw.png에 먼저 백업하고,
  * public/assets/logo_title.png(게임이 실제로 로드하는 파일)에는 알파만 고친 결과를 쓴다.
  */
 

@@ -9,6 +9,7 @@ dist-sim/
 sim-results/
 scripts/out/
 
-# AI 생성 원본 작업 폴더 — 채택본은 public/assets/source/ 에 보존한다(중복 커밋 방지)
+# AI 생성 원본 작업 폴더 — 채택본은 art-source/ 에만 둔다.
+# art-source/ 는 public/ 밖이라 dist에 실려 나가지 않는다 (실측: dist 36MB -> 2.9MB)
 이미지생성/
 /*.png

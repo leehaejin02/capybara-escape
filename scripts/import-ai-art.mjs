@@ -20,7 +20,10 @@
  *                          variant 선택 격자((col*7+row*13)%4)가 체커보드로 드러난다.
  *
  * 출처·라이선스는 `docs/ASSET_CREDITS.md`, 스코프 결정은 `docs/DECISIONS.md` D14.
- * 원본은 `public/assets/source/`에 보존한다 — 되돌릴 수 있어야 한다(D14-e).
+ * 원본은 저장소 루트의 `art-source/`에 보존한다 — 되돌릴 수 있어야 한다(D14-e).
+ * **`public/` 밖에 두는 이유**: Vite는 `public/` 아래를 통째로 `dist/`에 복사한다.
+ * 원본을 거기 두면 34MB짜리 2560×2560 래스터가 매 배포마다 서버에 올라간다
+ * (실측 2026-08-08: `dist/assets` 36MB). 게임은 이 파일들을 한 번도 요청하지 않는다.
  *
  * 사용: npm run import:art
  */
@@ -31,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { encodePng } from './lib/png.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const SRC_DIR = join(ROOT, 'public/assets/source');
+const SRC_DIR = join(ROOT, 'art-source');
 const OUT_DIR = join(ROOT, 'public/assets');
 const TILE = 32;
 
