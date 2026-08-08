@@ -112,13 +112,16 @@ export class CustomizeScene extends Phaser.Scene {
      * 어긋났다(실측). 값을 네 군데 적으면 반드시 갈라진다.
      */
     const ROW_GAP_Y = 46;
+    /** 첫 행이 패널 위 테두리에 닿지 않도록 띄우는 값. 이걸 0으로 두면 항목 패널이
+     *  미리보기 패널을 파고든다(2026-08-08 실제로 그렇게 깨졌다). */
+    const FIRST_ROW_OFFSET_Y = 28;
     const rowY: Record<Category, number> = {
-      body: itemsTop + ROW_GAP_Y * 0,
-      outfit: itemsTop + ROW_GAP_Y * 1,
-      hat: itemsTop + ROW_GAP_Y * 2,
+      body: itemsTop + FIRST_ROW_OFFSET_Y + ROW_GAP_Y * 0,
+      outfit: itemsTop + FIRST_ROW_OFFSET_Y + ROW_GAP_Y * 1,
+      hat: itemsTop + FIRST_ROW_OFFSET_Y + ROW_GAP_Y * 2,
     };
     /** 마지막 행과 입장 버튼 사이는 한 칸 더 띄운다 — 선택 항목과 확정 버튼은 성격이 다르다. */
-    const confirmY = itemsTop + ROW_GAP_Y * 3 + 10;
+    const confirmY = itemsTop + FIRST_ROW_OFFSET_Y + ROW_GAP_Y * 3 + 10;
     const rowLabel: Record<Category, string> = { body: '몸', outfit: '옷', hat: '모자' };
 
     /*
@@ -127,10 +130,17 @@ export class CustomizeScene extends Phaser.Scene {
      * 그 바운즈로 패널을 그리니 패널이 화면 중앙에서 왼쪽으로 약 57px 밀려 보였다(실측).
      * 이제 좌우 끝을 같은 값(±HALF_W)으로 고정하고, 패널도 그 폭으로 직접 그린다.
      */
-    const HALF_W = 190;
-    const ARROW_X = 120;
-    const LABEL_X = HALF_W - 24;
-    const FOCUS_MARK_X = HALF_W - 4;
+    /*
+     * 한 행은 **왼쪽 라벨 블록 + 오른쪽 값 블록**으로 나눈다.
+     * 값을 화면 정중앙에 두면 라벨이 왼쪽으로만 튀어나와 패널이 한쪽으로 쏠려 보이고,
+     * 라벨과 `<`가 서로 붙는다(둘 다 2026-08-08에 실제로 발생). 값 블록을 오른쪽 영역의
+     * 중앙에 두면 행 전체가 ±HALF_W 안에 고르게 찬다.
+     */
+    const HALF_W = 200;
+    const FOCUS_MARK_X = 200;   // ▶ (행 왼쪽 끝)
+    const LABEL_X = 178;        // 몸/옷/모자 (왼쪽 정렬)
+    const VALUE_X = 86;         // 값 텍스트 중심 — 오른쪽 영역의 중앙
+    const ARROW_GAP = 96;       // 값 중심에서 화살표까지
 
     const itemsBounds: Phaser.GameObjects.Text[] = [];
 
@@ -144,21 +154,21 @@ export class CustomizeScene extends Phaser.Scene {
       itemsBounds.push(nameTag);
 
       const leftBtn = this.add
-        .text(width / 2 - ARROW_X, y, '<', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
+        .text(width / 2 + VALUE_X - ARROW_GAP, y, '<', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
       leftBtn.on('pointerdown', () => this.cycle(cat, -1));
       itemsBounds.push(leftBtn);
 
       const rightBtn = this.add
-        .text(width / 2 + ARROW_X, y, '>', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
+        .text(width / 2 + VALUE_X + ARROW_GAP, y, '>', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
       rightBtn.on('pointerdown', () => this.cycle(cat, 1));
       itemsBounds.push(rightBtn);
 
       const label = this.add
-        .text(width / 2, y, '', { fontFamily: 'monospace', fontSize: '18px', color: UI_TEXT.capyWhite })
+        .text(width / 2 + VALUE_X, y, '', { fontFamily: 'monospace', fontSize: '18px', color: UI_TEXT.capyWhite })
         .setOrigin(0.5);
       this.rowTexts[cat] = label;
       itemsBounds.push(label);
