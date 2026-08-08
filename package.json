@@ -9,7 +9,8 @@
     "build": "npm run check && vite build",
     "sim": "node scripts/check-boundary.mjs && tsc -p tsconfig.sim.json && node dist-sim/tools/sim-cli.js",
     "gen:sprites": "node scripts/gen-sprites.mjs",
-    "verify:sprites": "node scripts/verify-sprites.mjs"
+    "verify:sprites": "node scripts/verify-sprites.mjs",
+    "import:art": "node scripts/import-ai-art.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

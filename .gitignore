@@ -8,3 +8,7 @@ dist-sim/
 .claude/settings.local.json
 sim-results/
 scripts/out/
+
+# AI 생성 원본 작업 폴더 — 채택본은 public/assets/source/ 에 보존한다(중복 커밋 방지)
+이미지생성/
+/*.png

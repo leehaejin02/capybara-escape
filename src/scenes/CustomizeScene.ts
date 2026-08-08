@@ -27,8 +27,11 @@ import {
  */
 
 const BODY_NAMES = ['기본갈색', '연갈색', '회색', '흰색'];
-const OUTFIT_NAMES = ['없음', '멜빵바지', '수건', '우비', '작업복'];
-const HAT_NAMES = ['없음', '밀짚모자', '유자', '헬멧'];
+// 2026-08-08: 아트를 AI 생성본으로 교체하면서(DECISIONS.md D14) 이름을 실물에 맞췄다.
+// 이전 값은 '수건'/'우비'/'작업복'/'유자'였는데 그런 그림은 이번 세트에 없다 —
+// 화면의 글자와 그림이 다른 상태였다.
+const OUTFIT_NAMES = ['없음', '멜빵바지', '망토', '조끼', '스카프'];
+const HAT_NAMES = ['없음', '밀짚모자', '마법사모자', '헬멧'];
 
 /** BootScene·ResultScene과 같은 하늘 텍스처 키 — 이미 구워져 있으면 재사용한다(background.ts). */
 const SKY_BG_KEY = 'ui_cozy_sky';
