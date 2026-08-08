@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
+import { IntroScene } from './scenes/IntroScene';
 import { CustomizeScene } from './scenes/CustomizeScene';
 import { GameScene } from './scenes/GameScene';
 import { ResultScene } from './scenes/ResultScene';
@@ -22,7 +23,7 @@ const config: Phaser.Types.Core.GameConfig = {
   height: GAME_HEIGHT,
   pixelArt: true,
   roundPixels: true,
-  scene: [BootScene, CustomizeScene, GameScene, ResultScene],
+  scene: [BootScene, IntroScene, CustomizeScene, GameScene, ResultScene],
 };
 
 const game = new Phaser.Game(config);

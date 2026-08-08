@@ -417,6 +417,49 @@ for (const job of jobs) {
   ran++;
 }
 
+// ── 타이틀 화면 배경 (전면 일러스트) ────────────────────────────────
+// 스프라이트와 성격이 다르다. 타일도 시트도 아니고, 화면 하나를 통째로 덮는 그림이다.
+// 실측(2026-08-08): 원본 1264×848에 고유색 118,522개, 가로 색 구간 최빈값 1px —
+// **스냅할 픽셀 격자가 없다.** AI가 픽셀아트 "느낌"으로 그린 매끄러운 래스터다.
+// 그래서 격자를 찾아 맞추는 대신, 우리가 격자를 정한다:
+//   480×320으로 굽고 화면에서 정확히 2배(960×640)로 띄운다.
+//   - 정수 배율이라 한글 로고 획이 안 죽는다(세션 6의 DPR 결함과 같은 이유)
+//   - 480 폭이면 로고 글자당 약 34px이라 판독에 여유가 있다(240×160은 17px로 빠듯)
+// 원본 비율 1.491을 3:2에 맞추려고 가로를 중앙에서 아주 조금 잘라낸다(약 1%).
+const titleSrc = join(SRC_DIR, 'ai_title_src.png');
+if (existsSync(titleSrc)) {
+  const raw = decodeRgbOrRgba(readFileSync(titleSrc));
+  const TW = 480, TH = 320;
+  const wantW = Math.round(raw.height * (TW / TH));           // 3:2에 맞는 가로
+  const cropX = Math.max(0, Math.round((raw.width - wantW) / 2));
+  const useW = Math.min(raw.width - cropX * 2, wantW);
+  const nx = useW / TW, ny = raw.height / TH;
+  const out = new Uint8ClampedArray(TW * TH * 4);
+  for (let y = 0; y < TH; y++) {
+    for (let x = 0; x < TW; x++) {
+      const votes = new Map();
+      for (let sy = Math.floor(y * ny); sy < Math.floor((y + 1) * ny); sy++) {
+        for (let sx = Math.floor(cropX + x * nx); sx < Math.floor(cropX + (x + 1) * nx); sx++) {
+          if (sy >= raw.height || sx >= raw.width) continue;
+          const i = (sy * raw.width + sx) * 4;
+          const k = ((raw.data[i] >> 3) << 10) | ((raw.data[i + 1] >> 3) << 5) | (raw.data[i + 2] >> 3);
+          votes.set(k, (votes.get(k) || 0) + 1);
+        }
+      }
+      let best = 0, bn = -1;
+      for (const [k, n] of votes) if (n > bn) { bn = n; best = k; }
+      const o = (y * TW + x) * 4;
+      out[o] = ((best >> 10) & 31) << 3; out[o + 1] = ((best >> 5) & 31) << 3;
+      out[o + 2] = (best & 31) << 3; out[o + 3] = 255;
+    }
+  }
+  writeFileSync(join(OUT_DIR, 'title_screen.png'), encodePng(TW, TH, out));
+  const uq = new Set();
+  for (let i = 0; i < out.length; i += 4) uq.add(rgbKey(out, i));
+  console.log(`write title_screen.png  ${TW}x${TH}  색 ${uq.size}개  (화면에서 2배 = 960x640)`);
+  ran++;
+}
+
 // ── 캐릭터 세트: 몸통 + 모자 + 의상 ────────────────────────────────
 // 세 장이 런타임에 겹쳐지므로(CustomizeScene.bakeCompositeTexture) 반드시 함께 굽는다.
 // 하나만 새것으로 바꾸면 나머지가 어긋난다 — D14-b가 카피바라를 뒤로 미룬 이유다.
