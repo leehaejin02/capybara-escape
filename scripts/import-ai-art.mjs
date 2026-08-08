@@ -292,8 +292,19 @@ function layoutItemSheet(itemSheet, itemRow, body, anchor, offset) {
     const targetBottom = anchor === 'head' ? bb.y0 + offset : bb.y1 - offset;
     const dy = Math.round(targetBottom - src.y1);
     const dx = Math.round(bb.cx - src.cx);
+    /*
+     * 의상은 목선 위를 잘라낸다.
+     *
+     * AI가 옷을 **몸통 전체를 덮는 덩어리**로 그렸다(실측 2026-08-08: 멜빵바지 높이 20,
+     * 시작 y=9 — 몸통 높이 21, 시작 y=9와 사실상 같다). 밑단만 맞추면 얼굴이 통째로 덮인다.
+     * 옷 아래쪽에 AI가 넣어 준 크림색 띠가 몸통의 배 띠와 맞아야 하므로 밑단 정렬은 유지하고,
+     * 목선(몸통 위에서 34% 지점) 위쪽만 잘라 얼굴을 되살린다.
+     * 모자(anchor='head')는 머리 위에 얹히는 것이므로 자르지 않는다.
+     */
+    const neckY = anchor === 'body' ? bb.y0 + Math.round((bb.y1 - bb.y0 + 1) * 0.34) : -1;
     for (let f = 0; f < 4; f++) {
       for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+        if (neckY >= 0 && y < neckY) continue;
         const sx = x - dx, sy = y - dy;
         if (sx < 0 || sx >= TILE || sy < 0 || sy >= TILE) continue;
         const si = ((itemRow * TILE + sy) * itemSheet.width + dir * TILE + sx) * 4;
