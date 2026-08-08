@@ -282,7 +282,7 @@ function bboxOf(img, ox, oy) {
  * 프레임 4칸에 같은 그림을 복제한다 — 카피바라 4프레임이 머리·몸통 위치가 동일하기
  * 때문에 성립한다(2026-08-08 실측: 행 안에서 바운딩 박스 편차 0~1px).
  */
-function layoutItemSheet(itemSheet, itemRow, body, anchor, offset) {
+function layoutItemSheet(itemSheet, itemRow, body, anchor, offset, neckFrac = 0.5) {
   const out = new Uint8ClampedArray(4 * TILE * 4 * TILE * 4);
   const OW = 4 * TILE;
   for (let dir = 0; dir < 4; dir++) {
@@ -298,10 +298,12 @@ function layoutItemSheet(itemSheet, itemRow, body, anchor, offset) {
      * AI가 옷을 **몸통 전체를 덮는 덩어리**로 그렸다(실측 2026-08-08: 멜빵바지 높이 20,
      * 시작 y=9 — 몸통 높이 21, 시작 y=9와 사실상 같다). 밑단만 맞추면 얼굴이 통째로 덮인다.
      * 옷 아래쪽에 AI가 넣어 준 크림색 띠가 몸통의 배 띠와 맞아야 하므로 밑단 정렬은 유지하고,
-     * 목선(몸통 위에서 34% 지점) 위쪽만 잘라 얼굴을 되살린다.
+     * 목선 위쪽만 잘라 얼굴을 되살린다. 목선은 짐작하지 않고 `measureNeckFrac()`이
+     * **얼굴을 실제로 찾아서** 정한다 — 처음엔 "위에서 34%"로 잡았는데 그게 하필 눈 위치였다
+     * (실측: 몸통 y9~29에서 눈·코가 y16~19, 34%는 정확히 y16).
      * 모자(anchor='head')는 머리 위에 얹히는 것이므로 자르지 않는다.
      */
-    const neckY = anchor === 'body' ? bb.y0 + Math.round((bb.y1 - bb.y0 + 1) * 0.34) : -1;
+    const neckY = anchor === 'body' ? bb.y0 + Math.round((bb.y1 - bb.y0 + 1) * neckFrac) : -1;
     for (let f = 0; f < 4; f++) {
       for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
         if (neckY >= 0 && y < neckY) continue;
@@ -316,6 +318,34 @@ function layoutItemSheet(itemSheet, itemRow, body, anchor, offset) {
     }
   }
   return { width: OW, height: 4 * TILE, data: out };
+}
+
+
+/**
+ * 몸통 정면에서 **얼굴이 끝나는 높이**를 찾아 비율로 돌려준다.
+ * 눈·코는 주변보다 확연히 어두운 점 뭉치라, 몸통 위쪽 60% 안에서
+ * 「어두운 픽셀이 2개 이상인 마지막 행」을 얼굴 아래끝으로 본다.
+ * 실측(2026-08-08): 몸통 y9~29에서 y16(2) y17(3) y18(5) y19(1) → 얼굴 아래끝 18 → 목선 20.
+ */
+function measureNeckFrac(body) {
+  const { width: W, data } = body;
+  const bb = bboxOf(body, 0, 0);
+  if (!bb) return 0.5;
+  const h = bb.y1 - bb.y0 + 1;
+  const limit = bb.y0 + Math.round(h * 0.6);
+  let faceBottom = -1;
+  for (let y = bb.y0; y <= limit; y++) {
+    let dark = 0;
+    for (let x = 0; x < TILE; x++) {
+      const i = (y * W + x) * 4;
+      if (data[i + 3] <= 8) continue;
+      if (lumOf(data[i], data[i + 1], data[i + 2]) < 70) dark++;
+    }
+    if (dark >= 2) faceBottom = y;
+  }
+  if (faceBottom < 0) return 0.5;
+  const neckY = faceBottom + 2;          // 얼굴 아래 2px 여유
+  return Math.min(0.72, (neckY - bb.y0) / h);
 }
 
 /** 몸 색 변형. 명도·채도만 건드린다 — 형태와 외곽선은 그대로 둔다. */
@@ -432,8 +462,10 @@ if (existsSync(capySrc)) {
       quantizeTile(outfits, c * TILE, r * TILE, 8); despeckle(outfits, c * TILE, r * TILE, false);
     }
     // lift=1: 옷 아래끝을 발끝보다 1px 위로. 발이 옷에 먹히지 않게 한다.
+    const neckFrac = measureNeckFrac(body);
+    console.log(`  목선 비율 ${(neckFrac * 100).toFixed(0)}% (얼굴 실측 기반)`);
     for (let row = 0; row < 4; row++) {
-      const s = layoutItemSheet(outfits, row, body, 'body', 1);
+      const s = layoutItemSheet(outfits, row, body, 'body', 1, neckFrac);
       writeFileSync(join(OUT_DIR, `capy_outfit_0${row + 1}.png`), encodePng(s.width, s.height, s.data));
     }
     console.log('write capy_outfit_01..04');
