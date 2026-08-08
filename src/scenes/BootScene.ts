@@ -24,6 +24,9 @@ const SPRITESHEETS: ReadonlyArray<{ key: string; frameWidth: number; frameHeight
   { key: 'capy_hat_01', frameWidth: 32, frameHeight: 32 },
   { key: 'capy_hat_02', frameWidth: 32, frameHeight: 32 },
   { key: 'capy_hat_03', frameWidth: 32, frameHeight: 32 },
+  // 과일 모자 2종 — AI 시트에 없어 import-ai-art.mjs가 코드로 그린다.
+  { key: 'capy_hat_04', frameWidth: 32, frameHeight: 32 },
+  { key: 'capy_hat_05', frameWidth: 32, frameHeight: 32 },
   { key: 'goblin_walk', frameWidth: 32, frameHeight: 32 },
   { key: 'goblin_idle', frameWidth: 32, frameHeight: 32 },
   // tile_floor/tile_wall: SPEC_ZONES.md §2.2 — 128×96 = 4변형(col) × 3구역(row).

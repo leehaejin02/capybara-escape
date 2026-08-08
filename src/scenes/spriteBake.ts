@@ -19,7 +19,7 @@ export interface CustomizeSelection {
   bodyIndex: number;
   /** 0..4 → capy_outfit_00..04 */
   outfitIndex: number;
-  /** 0..3 → capy_hat_00..03 */
+  /** 0..5 → capy_hat_00..05 (04=유자, 05=오렌지는 코드 생성) */
   hatIndex: number;
 }
 

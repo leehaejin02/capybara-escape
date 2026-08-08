@@ -392,6 +392,60 @@ function hugBody(itemSheet, body, dir) {
   }
 }
 
+
+/**
+ * 과일 모자(유자·오렌지)를 **코드로 그린다.**
+ *
+ * AI 모자 시트에는 없는 항목이라 재생성 대신 직접 그린다 — 감귤은 32×32에서
+ * 지름 9px짜리 단순한 형태라 좌표로 찍는 편이 빠르고, 타이틀 로고의 카피바라가
+ * 머리에 얹고 있는 과일과 같은 모티프라 세계관도 이어진다.
+ *
+ * `gen-sprites.mjs`가 아니라 여기 두는 이유: 그 스크립트는 AI로 교체한 에셋까지
+ * 전부 다시 굽기 때문에 실행하면 아트가 원복된다(D14-e의 되돌림 경로다).
+ * 이 과일은 현재 배포본의 일부이므로 현재 배포본을 만드는 스크립트가 소유한다.
+ *
+ * 위치는 다른 모자와 같은 규칙 — 몸통 머리끝 기준으로 얹는다.
+ */
+function makeFruitHat(body, palette) {
+  const OW = 4 * TILE, OH = 4 * TILE;
+  const out = new Uint8ClampedArray(OW * OH * 4);
+  const R = 4;                    // 과일 반지름(px) — 지름 9
+  const SINK = 5;                 // 머리끝보다 이만큼 아래에 과일 아래끝을 둔다
+  const put = (x, y, c) => {
+    if (x < 0 || y < 0 || x >= OW || y >= OH) return;
+    const i = (y * OW + x) * 4;
+    out[i] = c[0]; out[i + 1] = c[1]; out[i + 2] = c[2]; out[i + 3] = 255;
+  };
+  for (let dir = 0; dir < 4; dir++) {
+    const bb = bboxOf(body, 0, dir * TILE);
+    if (!bb) continue;
+    const cx = Math.round(bb.cx);
+    const cy = bb.y0 + SINK - R;   // 과일 중심 y
+    for (let f = 0; f < 4; f++) {
+      const ox = f * TILE;
+      const oy = dir * TILE;
+      // 몸통(원) — 안쪽은 채움, 테두리는 외곽선. 아래쪽 절반은 한 톤 어둡게.
+      for (let dy = -R; dy <= R; dy++) {
+        for (let dx = -R; dx <= R; dx++) {
+          const d2 = dx * dx + dy * dy;
+          if (d2 > R * R + R) continue;
+          const edge = d2 > (R - 1) * (R - 1) + (R - 1);
+          const c = edge ? palette.line : dy > 1 ? palette.shade : palette.fill;
+          put(ox + cx + dx, oy + cy + dy, c);
+        }
+      }
+      // 하이라이트 한 점 — 좌상단.
+      put(ox + cx - 2, oy + cy - 2, palette.hi);
+      // 잎 2칸 + 꼭지 1칸 — 우상단.
+      put(ox + cx, oy + cy - R - 1, palette.stem);
+      put(ox + cx + 1, oy + cy - R - 1, palette.leaf);
+      put(ox + cx + 2, oy + cy - R - 1, palette.leaf);
+      put(ox + cx + 2, oy + cy - R - 2, palette.leaf);
+    }
+  }
+  return { width: OW, height: OH, data: out };
+}
+
 /** 몸 색 변형. 명도·채도만 건드린다 — 형태와 외곽선은 그대로 둔다. */
 function recolorBody(sheet, mode) {
   const out = new Uint8ClampedArray(sheet.data);
@@ -543,6 +597,19 @@ if (existsSync(capySrc)) {
       writeFileSync(join(OUT_DIR, `${name}.png`), encodePng(s.width, s.height, s.data));
     });
     console.log('write capy_hat_01..03  (AI 2행 「나뭇잎 왕관」은 슬롯이 없어 미사용)');
+  }
+
+  // 과일 모자 2종 — 코드 생성(위 makeFruitHat 주석 참조).
+  {
+    const FRUITS = [
+      ['capy_hat_04', { fill: [242, 201, 76], shade: [214, 166, 46], line: [107, 74, 18], hi: [255, 232, 150], leaf: [78, 139, 58], stem: [90, 62, 24] }],  // 유자
+      ['capy_hat_05', { fill: [242, 149, 60], shade: [214, 118, 34], line: [122, 63, 16], hi: [255, 199, 138], leaf: [78, 139, 58], stem: [90, 62, 24] }],  // 오렌지
+    ];
+    for (const [name, pal] of FRUITS) {
+      const s = makeFruitHat(body, pal);
+      writeFileSync(join(OUT_DIR, `${name}.png`), encodePng(s.width, s.height, s.data));
+    }
+    console.log('write capy_hat_04(유자)·capy_hat_05(오렌지)  — 코드 생성');
   }
 
   // 의상: AI 시트 4행이 슬롯 4개와 1:1.

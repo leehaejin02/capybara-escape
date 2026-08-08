@@ -64,6 +64,7 @@
 | `public/assets/logo_title.png` | **저장소 소유자가 Google Gemini로 직접 생성** (2026-08-07) | 생성자 본인 소유 | **있음** — 알파 채널만 수정, 아래 참조 |
 | `tile_floor` · `tile_wall` · `props` · `goblin_walk` · `goblin_idle` · `capy_body_01~04` · `capy_hat_01~03` · `capy_outfit_01~04` | **저장소 소유자가 Google Gemini("나노바나나")로 직접 생성** (2026-08-08) | 생성자 본인 소유. 제3자 저작물 아님 | **있음** — `scripts/import-ai-art.mjs`가 32×32 규격으로 변환. 아래 참조 |
 | `title_screen` | **저장소 소유자가 Google Gemini로 직접 생성** (2026-08-08) | 생성자 본인 소유. 제3자 저작물 아님 | **있음** — 3:2로 중앙 크롭 후 480×320으로 축소(`scripts/import-ai-art.mjs`). 화면에서 정수 2배로 띄운다 |
+| `capy_hat_04`(유자) · `capy_hat_05`(오렌지) | **우리 코드가 생성** — `scripts/import-ai-art.mjs`의 `makeFruitHat()`. AI 모자 시트에 없는 항목이라 직접 그렸다. 타이틀 로고의 카피바라가 머리에 얹은 과일과 같은 모티프 | 자체 제작 | — |
 | 그 외 `public/assets/*.png` (`marker_*`, `tile_bush`, `tile_spa`, `tile_shadow` 등) | **우리 코드가 생성** — `scripts/gen-sprites.mjs` | 자체 제작 | — |
 
 ### 2026-08-08 — 스프라이트·타일을 AI 생성본으로 교체
