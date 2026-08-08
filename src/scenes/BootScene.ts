@@ -42,8 +42,10 @@ const SPRITESHEETS: ReadonlyArray<{ key: string; frameWidth: number; frameHeight
 
 /** 프레임이 1개뿐인 단순 이미지. docs/ART.md §2.2, SPEC_ZONES.md §3.4(tile_shadow 신규).
  * `title_screen`: 새 타이틀 배경(480×320, 화면에서 2배로 띄운다 — 정수 스케일, 한글 로고 획 보존).
+ * `intro_bg`: IntroScene 전용 배경(480×320, 화면에서 2배로 띄운다 — 지형(하늘·풀밭·흙)이 그려져
+ * 있어 카피바라가 밟고 설 땅이 생긴다).
  * `logo_title`은 이 씬에서 더는 안 쓰지만, 다른 곳이 참조할 수 있어 로드 목록에서 빼지 않는다. */
-const IMAGES: readonly string[] = ['tile_shadow', 'logo_title', 'title_screen'];
+const IMAGES: readonly string[] = ['tile_shadow', 'logo_title', 'title_screen', 'intro_bg'];
 
 /** `title_screen` 원본 픽셀 크기와, 화면에 띄울 정수 배율. 표현값(밸런스 아님) — 정수여야
  * pixelArt(NEAREST) 샘플링에서 한글 로고 획이 죽지 않는다(세션 6에서 고친 결함과 동일 원인). */

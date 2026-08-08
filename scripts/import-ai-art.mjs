@@ -426,8 +426,12 @@ for (const job of jobs) {
 //   - 정수 배율이라 한글 로고 획이 안 죽는다(세션 6의 DPR 결함과 같은 이유)
 //   - 480 폭이면 로고 글자당 약 34px이라 판독에 여유가 있다(240×160은 17px로 빠듯)
 // 원본 비율 1.491을 3:2에 맞추려고 가로를 중앙에서 아주 조금 잘라낸다(약 1%).
-const titleSrc = join(SRC_DIR, 'ai_title_src.png');
-if (existsSync(titleSrc)) {
+// 같은 처리를 타이틀과 인트로 배경 두 장에 쓴다.
+//   ai_title_src  -> title_screen  (로고·제목이 그려진 타이틀 화면)
+//   ai_intro_bg_src -> intro_bg    (컷신 배경. 지평선 62.7%, 풀밭 62.7~81.4%, 흙 81.4%~ 실측)
+for (const [srcName, outName] of [['ai_title_src.png', 'title_screen.png'], ['ai_intro_bg_src.png', 'intro_bg.png']]) {
+  const titleSrc = join(SRC_DIR, srcName);
+  if (!existsSync(titleSrc)) continue;
   const raw = decodeRgbOrRgba(readFileSync(titleSrc));
   const TW = 480, TH = 320;
   const wantW = Math.round(raw.height * (TW / TH));           // 3:2에 맞는 가로
@@ -453,10 +457,10 @@ if (existsSync(titleSrc)) {
       out[o + 2] = (best & 31) << 3; out[o + 3] = 255;
     }
   }
-  writeFileSync(join(OUT_DIR, 'title_screen.png'), encodePng(TW, TH, out));
+  writeFileSync(join(OUT_DIR, outName), encodePng(TW, TH, out));
   const uq = new Set();
   for (let i = 0; i < out.length; i += 4) uq.add(rgbKey(out, i));
-  console.log(`write title_screen.png  ${TW}x${TH}  색 ${uq.size}개  (화면에서 2배 = 960x640)`);
+  console.log(`write ${outName}  ${TW}x${TH}  색 ${uq.size}개  (화면에서 2배 = 960x640)`);
   ran++;
 }
 

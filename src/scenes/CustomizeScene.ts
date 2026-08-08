@@ -178,7 +178,7 @@ export class CustomizeScene extends Phaser.Scene {
 
     const hintY = Math.max(confirmY + 46, this.scale.height - 40);
     this.add
-      .text(width / 2, hintY, '↑↓ 항목 선택 · ←→ 변경 · Enter/클릭 입장', {
+      .text(width / 2, hintY, '↑↓ 항목 선택 · ←→ 변경 · Enter/클릭 입장 · ESC 타이틀', {
         fontFamily: 'monospace',
         fontSize: '13px',
         color: UI_TEXT.capyGrayMid,
@@ -198,6 +198,8 @@ export class CustomizeScene extends Phaser.Scene {
     kb?.on('keydown-S', () => this.moveFocus(1));
     kb?.on('keydown-ENTER', () => this.confirm());
     kb?.on('keydown-SPACE', () => this.confirm());
+    // 되돌아갈 길이 없으면 인트로를 다시 보려고 새로고침해야 한다 — ESC로 타이틀(S1)로 복귀시킨다.
+    kb?.on('keydown-ESC', () => this.scene.start('BootScene'));
 
     this.refresh();
   }
