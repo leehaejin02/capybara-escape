@@ -106,15 +106,37 @@ export class CustomizeScene extends Phaser.Scene {
     // ── 3개 선택 행 + 입장 버튼 — 먼저 실제 요소를 만들고, 그 바운즈를 재서 패널을 뒤에 그린다.
     // (BootScene/ResultScene 조작키 패널과 같은 방식 — 폰트 폴백으로 폭이 바뀌어도 안 밀린다.)
     const itemsTop = PREVIEW_PANEL_TOP + previewPanelH + 20;
-    const rowY: Record<Category, number> = { body: itemsTop + 28, outfit: itemsTop + 74, hat: itemsTop + 120 };
-    const confirmY = itemsTop + 170;
+    /*
+     * 행 간격을 하나의 상수에서 파생시킨다. 이전에는 28 / 74 / 120 / 170을 따로 적어 두어
+     * 행 사이는 46인데 마지막 행 → 입장 버튼만 50이었고, 패널 위 여백(29px)과 아래 여백(25px)도
+     * 어긋났다(실측). 값을 네 군데 적으면 반드시 갈라진다.
+     */
+    const ROW_GAP_Y = 46;
+    const rowY: Record<Category, number> = {
+      body: itemsTop + ROW_GAP_Y * 0,
+      outfit: itemsTop + ROW_GAP_Y * 1,
+      hat: itemsTop + ROW_GAP_Y * 2,
+    };
+    /** 마지막 행과 입장 버튼 사이는 한 칸 더 띄운다 — 선택 항목과 확정 버튼은 성격이 다르다. */
+    const confirmY = itemsTop + ROW_GAP_Y * 3 + 10;
     const rowLabel: Record<Category, string> = { body: '몸', outfit: '옷', hat: '모자' };
+
+    /*
+     * 가로 배치는 **화면 중심 기준 대칭**으로 잡는다.
+     * 이전에는 라벨이 중심 −260, 오른쪽 화살표가 +140이라 좌우 폭이 260 대 150으로 달랐고,
+     * 그 바운즈로 패널을 그리니 패널이 화면 중앙에서 왼쪽으로 약 57px 밀려 보였다(실측).
+     * 이제 좌우 끝을 같은 값(±HALF_W)으로 고정하고, 패널도 그 폭으로 직접 그린다.
+     */
+    const HALF_W = 190;
+    const ARROW_X = 120;
+    const LABEL_X = HALF_W - 24;
+    const FOCUS_MARK_X = HALF_W - 4;
 
     const itemsBounds: Phaser.GameObjects.Text[] = [];
 
     (['body', 'outfit', 'hat'] as Category[]).forEach((cat) => {
       const y = rowY[cat];
-      const nameTag = this.add.text(width / 2 - 260, y, rowLabel[cat], {
+      const nameTag = this.add.text(width / 2 - LABEL_X, y, rowLabel[cat], {
         fontFamily: 'monospace',
         fontSize: '18px',
         color: UI_TEXT.capyGrayMid,
@@ -122,14 +144,14 @@ export class CustomizeScene extends Phaser.Scene {
       itemsBounds.push(nameTag);
 
       const leftBtn = this.add
-        .text(width / 2 - 140, y, '<', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
+        .text(width / 2 - ARROW_X, y, '<', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
       leftBtn.on('pointerdown', () => this.cycle(cat, -1));
       itemsBounds.push(leftBtn);
 
       const rightBtn = this.add
-        .text(width / 2 + 140, y, '>', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
+        .text(width / 2 + ARROW_X, y, '>', { fontFamily: 'monospace', fontSize: '26px', color: UI_TEXT.accentAmber })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
       rightBtn.on('pointerdown', () => this.cycle(cat, 1));
@@ -141,7 +163,7 @@ export class CustomizeScene extends Phaser.Scene {
       this.rowTexts[cat] = label;
       itemsBounds.push(label);
 
-      const focusMark = this.add.text(width / 2 - 200, y, '', { fontFamily: 'monospace', fontSize: '18px', color: UI_TEXT.accentAmber });
+      const focusMark = this.add.text(width / 2 - FOCUS_MARK_X, y, '', { fontFamily: 'monospace', fontSize: '18px', color: UI_TEXT.accentAmber });
       this.rowFocusMarks[cat] = focusMark;
       itemsBounds.push(focusMark);
 
@@ -159,17 +181,20 @@ export class CustomizeScene extends Phaser.Scene {
     confirmBtn.on('pointerdown', () => this.confirm());
     itemsBounds.push(confirmBtn);
 
-    // 항목 3줄 + 입장 버튼을 감싸는 패널 — 만든 요소들의 실측 바운즈로 크기를 정한다.
-    const maxRight = Math.max(...itemsBounds.map((t) => t.getBounds().right));
-    const minLeft = Math.min(...itemsBounds.map((t) => t.getBounds().left));
+    /*
+     * 패널은 **화면 중심 기준 고정 폭**으로 그린다(바운즈 자동 측정 아님).
+     * 바운즈로 그리면 좌우 요소 폭이 다를 때 패널이 한쪽으로 밀린다 — 그게 이번에 고친 결함이다.
+     * 세로는 바운즈로 재되 위아래 여백을 같은 상수로 주어 대칭을 보장한다.
+     */
     const minTop = Math.min(...itemsBounds.map((t) => t.getBounds().top));
     const maxBottom = Math.max(...itemsBounds.map((t) => t.getBounds().bottom));
+    const panelW = (HALF_W + ITEMS_PANEL_PAD_X) * 2;
     const itemsPanelGfx = this.add.graphics();
     drawPanel(
       itemsPanelGfx,
-      minLeft - ITEMS_PANEL_PAD_X,
+      width / 2 - panelW / 2,
       minTop - ITEMS_PANEL_PAD_Y,
-      maxRight - minLeft + ITEMS_PANEL_PAD_X * 2,
+      panelW,
       maxBottom - minTop + ITEMS_PANEL_PAD_Y * 2
     );
     // 패널을 나중에 그리면 위에 덮이므로, 항목 요소들을 다시 앞으로 올린다(BootScene과 같은 처리).
