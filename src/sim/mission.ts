@@ -52,6 +52,24 @@ export function handleMissionTick(state: SimState, input: SimInput, dt: number):
   // §5.3 시작 조건
   if (!input.interact) return false;
 
+  const bestIndex = findInteractableMission(state);
+  if (bestIndex === null) return false;
+
+  player.missionIndex = bestIndex;
+  player.missionSec = 0;
+  return false;
+}
+
+/**
+ * §5.3 후보 탐색(3번째 줄) — 활성 && 미완료 && `MISSION.INTERACT_RADIUS_PX` 이내에서
+ * 제곱거리 최소(동률이면 index 작은 쪽)인 미션 지점의 index. 없으면 `null`.
+ *
+ * `input.interact` 여부는 이 함수의 관심사가 아니다 — 호출부(`handleMissionTick`)가 실제 시작에
+ * 쓰고, `world.ts`는 "지금 E를 누르면 시작될 지점"을 `state.interactableMissionIndex`로 노출하는 데
+ * **같은 이 함수**를 다시 쓴다. 새 거리 상수를 만들지 않는다.
+ */
+export function findInteractableMission(state: SimState): number | null {
+  const player = state.player;
   let bestIndex = -1;
   let bestD2 = Infinity;
   for (const p of state.missions) {
@@ -62,11 +80,7 @@ export function handleMissionTick(state: SimState, input: SimInput, dt: number):
       bestIndex = p.index;
     }
   }
-  if (bestIndex === -1) return false;
-
-  player.missionIndex = bestIndex;
-  player.missionSec = 0;
-  return false;
+  return bestIndex === -1 ? null : bestIndex;
 }
 
 /**

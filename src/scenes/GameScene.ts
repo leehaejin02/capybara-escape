@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GOBLIN, MISSION, PLAYER, ROUND, SIM, WORLD } from '../config/balance';
+import { GOBLIN, MISSION, PLAYER, SIM, WORLD } from '../config/balance';
 import { createRng } from '../sim/rng';
 import { createInitialState, step } from '../sim/world';
 import { ACTIVE_ZONE, EXIT_POINT, MAP_ROWS, MISSION_POINTS } from '../sim/map';
@@ -54,6 +54,34 @@ const HUD_DASH_TIME_TEXT_X = HUD_DASH_BAR_X + HUD_DASH_BAR_W + 6;
 /** HUD 패널 전체 높이. 하트 아래에 대시 게이지 한 줄을 더 넣기 위해 92 → 116으로 확장. 폭 240은 유지. */
 const HUD_PANEL_HEIGHT_PX = 116;
 
+/**
+ * 상호작용 안내("[E] 미션 시작")와 탈출 안내 배너 — 플레이어에게 "지금 뭘 해야 하는지"를
+ * 알려주는 순수 표현. 판정은 sim(`state.interactableMissionIndex` / `state.exitOpen`)이 이미
+ * 끝낸 값을 읽기만 한다(하네스 3). 아래 상수는 전부 "어디에·얼마나 크게 그릴지"이지 게임 규칙이
+ * 아니므로 balance.ts 대상이 아니다(하네스 2는 밸런스 수치에만 적용된다).
+ */
+const INTERACT_HINT_LABEL = '[E] 미션 시작';
+/** 플레이어 스프라이트(32px, origin 0.5,0.5 → 머리 꼭대기 = pos.y - 16) 위 여백을 더한 오프셋. */
+const INTERACT_HINT_OFFSET_Y_PX = -22;
+const INTERACT_HINT_FONT_SIZE_PX = '12px';
+/**
+ * 캐릭터가 도달 가능한 최대 depth(2000 + MAP_HEIGHT_PX)보다 항상 큰 값 — buildTilemap()의
+ * CANOPY_DEPTH와 같은 관용구다. "플레이어 머리 위에 항상 보인다"만 요구되고 특정 y와
+ * 결부되지 않으므로 전역 상수로 충분하다.
+ */
+const INTERACT_HINT_DEPTH = 2000 + WORLD.MAP_HEIGHT_PX + WORLD.TILE_SIZE_PX;
+
+const ESCAPE_BANNER_LABEL = '미션 완료! 탈출구로 가세요';
+const ESCAPE_BANNER_FONT_SIZE_PX = '18px';
+const ESCAPE_BANNER_TOP_Y = 16;
+const ESCAPE_BANNER_PADDING_X = 20;
+const ESCAPE_BANNER_PADDING_Y = 10;
+/** 배너·탈출구 마커 공용 "은은한 깜빡임" 주기(ms)와 최소 알파. 과하지 않게 느리고 얕게. */
+const BLINK_DURATION_MS = 900;
+const BLINK_MIN_ALPHA = 0.55;
+/** 탈출구가 열리기 전, 마커를 옅게 보이게 하는 알파(구분 표현용). */
+const EXIT_CLOSED_ALPHA = 0.5;
+
 export class GameScene extends Phaser.Scene {
   private state!: SimState;
   private accumulatorSec = 0;
@@ -79,6 +107,13 @@ export class GameScene extends Phaser.Scene {
   private missionGaugeText!: Phaser.GameObjects.Text;
   private minigames!: MinigameOverlay;
 
+  /** §안내 2종(사용자 요청) — sim의 `interactableMissionIndex`/`exitOpen`을 읽어 그리기만 한다. */
+  private interactHintText!: Phaser.GameObjects.Text;
+  private escapeBannerPanel!: Phaser.GameObjects.Graphics;
+  private escapeBannerText!: Phaser.GameObjects.Text;
+  /** 탈출구 깜빡임 트윈은 열리는 순간 1회만 시작한다(매 프레임 새 트윈을 만들지 않는다). */
+  private exitBlinkStarted = false;
+
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private keyW!: Phaser.Input.Keyboard.Key;
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -99,6 +134,7 @@ export class GameScene extends Phaser.Scene {
     this.accumulatorSec = 0;
     this.prevHits = 0;
     this.prevCompleted = 0;
+    this.exitBlinkStarted = false;
 
     // 헤드리스 시뮬(§7 봇)과 달리 실제 플레이는 매 판 다른 미션 배치를 원한다.
     // 시드는 밸런스 수치가 아니라 "이번 판을 재현 가능하게 만드는 값"일 뿐이다.
@@ -113,6 +149,8 @@ export class GameScene extends Phaser.Scene {
     this.buildPlayer();
     this.buildGoblins();
     this.buildHud();
+    this.buildInteractHint();
+    this.buildEscapeBanner();
     this.minigames = new MinigameOverlay(this);
 
     this.cameras.main.setBounds(0, 0, WORLD.MAP_WIDTH_PX, WORLD.MAP_HEIGHT_PX);
@@ -261,6 +299,54 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
   }
 
+  /**
+   * 상호작용 안내 — 플레이어 머리 위, 월드 좌표를 따라다닌다. `setScrollFactor(1)`(기본값과 같지만
+   * HUD와 다른 취급임을 명시)로 카메라를 따라 스크롤한다. `create()`에서 1회만 만들고
+   * `render()`가 위치·visible만 갱신한다(매 프레임 새로 만들지 않는다).
+   */
+  private buildInteractHint(): void {
+    this.interactHintText = this.add
+      .text(0, 0, INTERACT_HINT_LABEL, { fontFamily: 'monospace', fontSize: INTERACT_HINT_FONT_SIZE_PX, color: UI_TEXT.capyWhite })
+      .setOrigin(0.5, 1)
+      .setScrollFactor(1)
+      .setDepth(INTERACT_HINT_DEPTH)
+      .setVisible(false);
+  }
+
+  /**
+   * 탈출 안내 배너 — 화면 상단 중앙 고정(`setScrollFactor(0)`). 기존 HUD 패널과 같은 어휘
+   * (`drawPanel`, `UI_TEXT`, monospace)를 쓴다. 텍스트 내용이 고정이라 패널 크기를 `create()`
+   * 시점에 텍스트 실측 폭으로 한 번만 계산해 그린다 — 매 프레임 `clear()`+재작성하지 않는다.
+   * `visible`만 `render()`가 `state.exitOpen`을 보고 토글한다.
+   */
+  private buildEscapeBanner(): void {
+    const { width } = this.scale;
+
+    this.escapeBannerText = this.add
+      .text(0, 0, ESCAPE_BANNER_LABEL, { fontFamily: 'monospace', fontSize: ESCAPE_BANNER_FONT_SIZE_PX, color: UI_TEXT.capyWhite })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(3001)
+      .setVisible(false);
+
+    const panelW = this.escapeBannerText.width + ESCAPE_BANNER_PADDING_X * 2;
+    const panelH = this.escapeBannerText.height + ESCAPE_BANNER_PADDING_Y * 2;
+    const panelX = width / 2 - panelW / 2;
+    this.escapeBannerText.setPosition(width / 2, ESCAPE_BANNER_TOP_Y + ESCAPE_BANNER_PADDING_Y);
+
+    this.escapeBannerPanel = this.add.graphics().setScrollFactor(0).setDepth(3000).setVisible(false);
+    drawPanel(this.escapeBannerPanel, panelX, ESCAPE_BANNER_TOP_Y, panelW, panelH);
+
+    this.tweens.add({
+      targets: [this.escapeBannerPanel, this.escapeBannerText],
+      alpha: BLINK_MIN_ALPHA,
+      duration: BLINK_DURATION_MS,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
   update(_time: number, deltaMs: number): void {
     if (this.ended) return;
 
@@ -327,6 +413,14 @@ export class GameScene extends Phaser.Scene {
     this.playerSprite.setAlpha(p.invulnSec > 0 && Math.floor(this.time.now / 80) % 2 === 0 ? 0.4 : 1);
     this.playerSprite.setDepth(2000 + p.pos.y);
 
+    // 상호작용 안내 — sim이 이미 판정한 값을 읽기만 한다(§5.3 재사용, world.ts). 미션 수행 중이면
+    // interactableMissionIndex가 항상 null이므로 별도로 p.missionIndex를 다시 검사하지 않는다.
+    const showInteractHint = this.state.interactableMissionIndex !== null;
+    this.interactHintText.setVisible(showInteractHint);
+    if (showInteractHint) {
+      this.interactHintText.setPosition(p.pos.x, p.pos.y + INTERACT_HINT_OFFSET_Y_PX);
+    }
+
     this.state.goblins.forEach((g, i) => {
       const sprite = this.goblinSprites[i];
       sprite.setPosition(g.pos.x, g.pos.y);
@@ -352,7 +446,30 @@ export class GameScene extends Phaser.Scene {
       const m = this.state.missions[i];
       sprite.setFrame(!m.active ? 0 : m.done ? 2 : 1);
     });
-    this.exitSprite.setFrame(this.state.completedCount >= ROUND.EXIT_OPENS_AT_MISSIONS ? 1 : 0);
+
+    // 탈출구 마커 — 도달 판정은 sim이 한다(state.exitOpen). 여기는 열림/닫힘을 프레임(ART.md
+    // §3.5: 0=닫힘/1=열림)과 알파로 구분해 표현할 뿐이다.
+    this.exitSprite.setFrame(this.state.exitOpen ? 1 : 0);
+    if (this.state.exitOpen) {
+      this.exitSprite.setAlpha(1);
+      if (!this.exitBlinkStarted) {
+        this.exitBlinkStarted = true;
+        this.tweens.add({
+          targets: this.exitSprite,
+          alpha: BLINK_MIN_ALPHA,
+          duration: BLINK_DURATION_MS,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+      }
+    } else {
+      this.exitSprite.setAlpha(EXIT_CLOSED_ALPHA);
+    }
+
+    // 탈출 안내 배너 — 화면 상단 고정. state.exitOpen이 참이 된 뒤 계속 표시(§6.4 3번).
+    this.escapeBannerPanel.setVisible(this.state.exitOpen);
+    this.escapeBannerText.setVisible(this.state.exitOpen);
 
     this.renderVision();
     this.renderHud();

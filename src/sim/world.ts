@@ -1,6 +1,6 @@
 import { HIDING, PLAYER, ROUND, SIM } from '../config/balance';
 import { EXIT_POINT, GOBLIN_ROUTES, MISSION_POINTS, PLAYER_START, selectMap, tileCharAt } from './map';
-import { handleMissionTick, selectActiveMissions } from './mission';
+import { findInteractableMission, handleMissionTick, selectActiveMissions } from './mission';
 import { updateGoblin } from './goblin';
 import { moveAxisX, moveAxisY } from './movement';
 import { createBotPolicy } from './bot';
@@ -65,8 +65,15 @@ function computeTimeScale(player: Player): number {
   return HIDING.DEFAULT_TIME_SCALE;
 }
 
-/** §6.4. 순서 고정: hp0 → timeout → 탈출. */
+/**
+ * §6.4. 순서 고정: hp0 → timeout → 탈출.
+ *
+ * 3번 `exitOpen` 식은 **여기서 한 번만 계산해 `state.exitOpen`에 담고** 아래 탈출 판정도 그
+ * 필드를 읽는다 — 같은 식을 두 곳(판정 + 씬 노출)에 따로 쓰지 않는다.
+ */
 function checkEnd(state: SimState): void {
+  state.exitOpen = state.completedCount >= ROUND.EXIT_OPENS_AT_MISSIONS;
+
   if (state.player.hp <= 0) {
     state.ended = true;
     state.cleared = false;
@@ -79,12 +86,20 @@ function checkEnd(state: SimState): void {
     state.lossCause = 'timeout';
     return;
   }
-  const exitOpen = state.completedCount >= ROUND.EXIT_OPENS_AT_MISSIONS;
-  if (exitOpen && distSq(state.player.pos, EXIT_POINT) <= ROUND.EXIT_REACH_RADIUS_PX * ROUND.EXIT_REACH_RADIUS_PX) {
+  if (state.exitOpen && distSq(state.player.pos, EXIT_POINT) <= ROUND.EXIT_REACH_RADIUS_PX * ROUND.EXIT_REACH_RADIUS_PX) {
     state.ended = true;
     state.cleared = true;
     state.lossCause = 'none';
   }
+}
+
+/**
+ * `state.interactableMissionIndex` 갱신 — §5.3 후보 탐색(`findInteractableMission`, mission.ts)을
+ * 그대로 재사용한다. 미션 수행 중이면 §5.3 첫 줄과 같은 우선순위로 항상 `null`이다.
+ * 판정에 쓰이지 않는 순수 노출값이라 어디서 호출해도 동작에 영향이 없다.
+ */
+function updateInteractableMissionIndex(state: SimState): void {
+  state.interactableMissionIndex = state.player.missionIndex !== null ? null : findInteractableMission(state);
 }
 
 /**
@@ -137,7 +152,7 @@ export function createInitialState(rng: RNG, forcedMapIndex?: number): SimState 
     missionSec: 0,
   };
 
-  return {
+  const state: SimState = {
     mapIndex,
     elapsedSec: 0,
     timeRemainingSec: ROUND.TIME_LIMIT_SEC,
@@ -151,7 +166,14 @@ export function createInitialState(rng: RNG, forcedMapIndex?: number): SimState 
     lossCause: 'none',
     avoidTriggerCount: 0,
     stuckAbortCount: 0,
+    // §6.5는 이 두 필드를 언급하지 않는다(§6.4/§5.3의 파생값이라 "초기 상태"가 아니라 "그 시점의
+    // 계산 결과"이기 때문) — completedCount=0이므로 exitOpen 식은 자명히 false이고,
+    // interactableMissionIndex는 missionIndex(null)와 같은 탐색 함수로 구한다. 아래서 채운다.
+    exitOpen: false,
+    interactableMissionIndex: null,
   };
+  updateInteractableMissionIndex(state);
+  return state;
 }
 
 /** §6.1 한 틱의 실행 순서. 순서를 바꾸면 같은 시드가 다른 결과를 낸다. */
@@ -182,11 +204,16 @@ export function step(state: SimState, input: SimInput, dt: number): void {
   // 6. 시간 감소
   state.timeRemainingSec -= dt * computeTimeScale(state.player);
 
-  // 7. 종료 판정
+  // 7. 종료 판정 — 이 안에서 state.exitOpen도 채운다(§6.4 3번의 노출)
   checkEnd(state);
 
   // 8. 경과 시간
   state.elapsedSec += dt;
+
+  // 9. 파생 상태 필드 갱신 — 판정에 쓰이지 않는 순수 읽기용 노출값(§5.3 재사용).
+  //    §6.1의 8단계 실행 순서는 규칙(승패·이동)에 관한 것이고, 이건 그 뒤에 상태를 "읽어" 채우는
+  //    것뿐이라 순서를 더해도 §6.1이 보장하는 재현성은 깨지지 않는다.
+  updateInteractableMissionIndex(state);
 }
 
 /**

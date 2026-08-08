@@ -106,6 +106,19 @@ export interface SimState {
   avoidTriggerCount: number;
   /** §8 위험#1 방어 통계 — CHASE의 stuckSec가 임계치에 도달해 SEARCH로 강제 이탈한 총 횟수. */
   stuckAbortCount: number;
+  /**
+   * 탈출구가 열렸는가. §6.4 3번 `exitOpen = (completedCount >= ROUND.EXIT_OPENS_AT_MISSIONS)`의
+   * 노출값 — `checkEnd()`가 이미 매 틱 계산하던 식을 그대로 상태에 담은 것뿐이다(새 판정 아님).
+   * §7.1이 봇이 읽어도 되는 값으로 이미 이 이름을 명시했다("탈출구 `pos`, `exitOpen`").
+   */
+  exitOpen: boolean;
+  /**
+   * 지금 `E`를 누르면 실제로 시작될 미션 지점의 index. 없으면 `null`.
+   * §5.3 시작 조건의 후보 탐색(활성 && 미완료 && `MISSION.INTERACT_RADIUS_PX` 이내, 최소거리)을
+   * `input.interact` 조건 없이 그대로 재사용한 값이다. 미션 수행 중(`player.missionIndex !== null`)에는
+   * 항상 `null`이다 — §5.3 첫 줄("진행 중이면 §5.4로")과 같은 우선순위를 반영한다.
+   */
+  interactableMissionIndex: number | null;
 }
 
 /** 한 판(에피소드) 시뮬레이션 결과. src/tools/sim-cli.ts가 집계에 쓴다. */
