@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { UI_TEXT } from './palette';
-import { addCozySkyBackground } from './background';
 import { drawPanel } from './uiPanel';
 import {
   DEFAULT_SELECTION,
@@ -32,9 +31,6 @@ const BODY_NAMES = ['기본갈색', '연갈색', '회색', '흰색'];
 // 화면의 글자와 그림이 다른 상태였다.
 const OUTFIT_NAMES = ['없음', '멜빵바지', '망토', '조끼', '스카프'];
 const HAT_NAMES = ['없음', '밀짚모자', '마법사모자', '헬멧'];
-
-/** BootScene·ResultScene과 같은 하늘 텍스처 키 — 이미 구워져 있으면 재사용한다(background.ts). */
-const SKY_BG_KEY = 'ui_cozy_sky';
 
 /** 미리보기 확대 배율. 정수 스케일만(GDD 8장 — 픽셀아트 서브픽셀 금지).
  * 커스터마이즈의 주인공이 부속품처럼 보이지 않도록 이전(4)보다 키운다. */
@@ -72,8 +68,11 @@ export class CustomizeScene extends Phaser.Scene {
 
     const { width } = this.scale;
 
-    // BootScene·ResultScene과 같은 하늘 배경(검은 배경 대신). 맨 먼저 그려 최하단에 깐다.
-    addCozySkyBackground(this, width, this.scale.height, SKY_BG_KEY);
+    // 배경: 인트로와 같은 `intro_bg`(480×320)를 정수 배율 ×2로 깐다.
+    // 평평한 하늘 디더보다 장면이 있는 편이 낫고, 인트로에서 이어지는 화면이라 연속성도 맞다.
+    // 새 에셋을 만들지 않는다 — 가운데가 비어 있어 미리보기·메뉴 패널이 그 위에 그대로 올라간다.
+    // 정수 배율만 쓴다(픽셀아트 서브픽셀 금지 — 세션 6의 한글 획 소실과 같은 원인).
+    this.add.image(width / 2, this.scale.height / 2, 'intro_bg').setOrigin(0.5).setScale(2).setDepth(-10);
 
     // 밝은 하늘 위라 흰 글자만으로는 대비가 약하다 — ink 외곽선을 둘러 어떤 배경에서도 읽히게 한다.
     this.add
