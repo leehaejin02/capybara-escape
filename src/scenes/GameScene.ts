@@ -71,6 +71,19 @@ const INTERACT_HINT_FONT_SIZE_PX = '12px';
  */
 const INTERACT_HINT_DEPTH = 2000 + WORLD.MAP_HEIGHT_PX + WORLD.TILE_SIZE_PX;
 
+/**
+ * 미션 진행 게이지(화면 하단)의 레이아웃. 밸런스가 아니라 픽셀 좌표다.
+ * 패널 폭은 고정이 아니라 `max(막대, 안내 문구)`로 매 프레임 정해진다 — 문구가 미션 종류(M1~M5)에
+ * 따라 길이가 달라서 고정 폭으로 잡으면 긴 문구가 패널 밖으로 삐져나온다.
+ */
+const MISSION_GAUGE_BAR_W_PX = 260;
+const MISSION_GAUGE_BAR_H_PX = 18;
+/** 패널 안쪽 좌우 여백. 막대 기준 기존 값(10)보다 넉넉히 잡아 문구 끝이 테두리에 붙지 않게 한다. */
+const MISSION_GAUGE_PAD_X_PX = 14;
+/** 막대 위쪽(문구가 들어갈 자리) / 아래쪽 여백. */
+const MISSION_GAUGE_PAD_TOP_PX = 26;
+const MISSION_GAUGE_PAD_BOTTOM_PX = 8;
+
 const ESCAPE_BANNER_LABEL = '미션 완료! 탈출구로 가세요';
 const ESCAPE_BANNER_FONT_SIZE_PX = '18px';
 const ESCAPE_BANNER_TOP_Y = 16;
@@ -517,22 +530,27 @@ export class GameScene extends Phaser.Scene {
       const duration = this.missionDurationSec(type);
       const ratio = Phaser.Math.Clamp(s.player.missionSec / duration, 0, 1);
       const { width, height } = this.scale;
-      const barW = 260;
-      const barH = 18;
+      const barW = MISSION_GAUGE_BAR_W_PX;
+      const barH = MISSION_GAUGE_BAR_H_PX;
       const barX = width / 2 - barW / 2;
       const barY = height - 70;
 
       this.missionGaugeGfx.setVisible(true);
       this.missionGaugeText.setVisible(true);
+
+      // 패널을 그리기 전에 문구를 먼저 확정해야 한다 — 실측 폭(text.width)으로 패널 폭을 정하기 때문.
+      this.missionGaugeText.setPosition(width / 2, barY - 12);
+      this.missionGaugeText.setText(`미션 ${type} 진행 중 (이동하면 취소·진행도 초기화)`);
+
+      const panelW = Math.max(barW, Math.ceil(this.missionGaugeText.width)) + MISSION_GAUGE_PAD_X_PX * 2;
+      const panelH = barH + MISSION_GAUGE_PAD_TOP_PX + MISSION_GAUGE_PAD_BOTTOM_PX;
+
       this.missionGaugeGfx.clear();
-      drawPanel(this.missionGaugeGfx, barX - 10, barY - 26, barW + 20, barH + 34);
+      drawPanel(this.missionGaugeGfx, width / 2 - panelW / 2, barY - MISSION_GAUGE_PAD_TOP_PX, panelW, panelH);
       this.missionGaugeGfx.fillStyle(UI_HEX.capyGrayDark, 1);
       this.missionGaugeGfx.fillRect(barX, barY, barW, barH);
       this.missionGaugeGfx.fillStyle(UI_HEX.accentAmber, 1);
       this.missionGaugeGfx.fillRect(barX, barY, barW * ratio, barH);
-
-      this.missionGaugeText.setPosition(width / 2, barY - 12);
-      this.missionGaugeText.setText(`미션 ${type} 진행 중 (이동하면 취소·진행도 초기화)`);
     } else {
       this.missionGaugeGfx.setVisible(false);
       this.missionGaugeText.setVisible(false);
