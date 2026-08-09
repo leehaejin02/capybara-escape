@@ -78,7 +78,7 @@ DOM 핸들러에서 동기 처리하고(`KeyboardManager.js:196` → `KeyboardPl
 
 **세션 5에서 같은 실수로 발주 오독을 통과시켰고 세션 8에서 반복했다.**
 → 다음 세션 규칙: **산출물을 "완성"이라고 말하기 전에 `verify`를 먼저 부른다.**
-상세는 `SUBMISSION_AI_TECH.md` §9.3에 반례로 실었다.
+상세는 `SUBMISSION_AI_TECH.md` §5-H에 반례로 실었다.
 
 ### 정정 — 앞서 남긴 기록이 틀렸다
 
