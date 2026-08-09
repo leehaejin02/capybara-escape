@@ -9,6 +9,10 @@ dist-sim/
 sim-results/
 scripts/out/
 
+# 제출용 인쇄 HTML — 원고(docs/*.md)와 스크린샷에서 언제든 다시 만들 수 있는 산출물.
+# 최종 PDF는 사람이 브라우저에서 저장하므로 저장소에 두지 않는다.
+dist-submission/
+
 # AI 생성 원본 작업 폴더 — 채택본은 art-source/ 에만 둔다.
 # art-source/ 는 public/ 밖이라 dist에 실려 나가지 않는다 (실측: dist 36MB -> 2.9MB)
 이미지생성/
