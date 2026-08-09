@@ -43,6 +43,7 @@ const OUT = join(ROOT, 'dist-submission');
 const TARGETS = [
   { src: 'SUBMISSION_GAME_INTRO.md', out: 'game-intro.html', title: '이세계 카피바라 — 게임 소개 및 설명' },
   { src: 'SUBMISSION_AI_TECH.md', out: 'ai-tech.html', title: '이세계 카피바라 — AI 활용 기술 문서' },
+  { src: 'SUBMISSION_TEAM_ROLES.md', out: 'team-roles.html', title: '이세계 카피바라 — 팀원 롤 기술서' },
 ];
 
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
