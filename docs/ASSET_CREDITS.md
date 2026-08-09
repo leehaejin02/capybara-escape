@@ -63,7 +63,7 @@
 |---|---|---|---|
 | `public/assets/logo_title.png` | **저장소 소유자가 Google Gemini로 직접 생성** (2026-08-07) | 생성자 본인 소유 | **있음** — 알파 채널만 수정, 아래 참조 |
 | `tile_floor` · `tile_wall` · `props` · `goblin_walk` · `goblin_idle` · `capy_body_01~04` · `capy_hat_01~03` · `capy_outfit_01~04` | **저장소 소유자가 Google Gemini("나노바나나")로 직접 생성** (2026-08-08) | 생성자 본인 소유. 제3자 저작물 아님 | **있음** — `scripts/import-ai-art.mjs`가 32×32 규격으로 변환. 아래 참조 |
-| `title_screen` | **저장소 소유자가 Google Gemini로 직접 생성** (2026-08-08) | 생성자 본인 소유. 제3자 저작물 아님 | **있음** — 3:2로 중앙 크롭 후 480×320으로 축소(`scripts/import-ai-art.mjs`). 화면에서 정수 2배로 띄운다 |
+| `title_screen` | **저장소 소유자가 Google Gemini로 직접 생성** (2026-08-08 최초, **2026-08-09 v2로 교체**) | 생성자 본인 소유. 제3자 저작물 아님 | **있음** — 3:2로 중앙 크롭 후 480×320으로 축소(`scripts/import-ai-art.mjs`). 화면에서 정수 2배로 띄운다 |
 | `capy_hat_04`(유자) · `capy_hat_05`(오렌지) | **우리 코드가 생성** — `scripts/import-ai-art.mjs`의 `makeFruitHat()`. AI 모자 시트에 없는 항목이라 직접 그렸다. 타이틀 로고의 카피바라가 머리에 얹은 과일과 같은 모티프 | 자체 제작 | — |
 | 그 외 `public/assets/*.png` (`marker_*`, `tile_bush`, `tile_spa`, `tile_shadow` 등) | **우리 코드가 생성** — `scripts/gen-sprites.mjs` | 자체 제작 | — |
 
@@ -100,6 +100,13 @@
   480×320으로 굽고 화면에서 정확히 2배로 띄운다. 240×160은 로고 글자당 17px로 빠듯해
   탈락시켰고(480은 34px), 비정수 배율은 세션 6에서 고친 한글 획 소실 결함을 되살린다.
   이 그림이 들어오면서 `logo_title.png`는 화면에서 쓰이지 않게 됐다(로드는 유지).
+- **타이틀 배경 v2 교체 (2026-08-09)**: 사용자가 Gemini로 새로 생성한 그림으로 갈아끼웠다.
+  원본 크기가 v1과 같은 **1264×848**이라 변환 경로·수치는 그대로 쓴다 — 코드는 한 줄도
+  바뀌지 않았고 `art-source/ai_title_src.png`만 교체한 뒤 `npm run import:art`를 돌렸다.
+  **v1 원본은 지우지 않고 `art-source/ai_title_src_v1_superseded.png`로 남겼다** —
+  현재 배포본 이전 화면이 어디서 왔는지 추적 가능해야 하기 때문이다.
+  재생성 결과 `public/assets/` 중 **`title_screen.png` 한 장만 바뀌었다**(나머지 6개 시트는
+  바이트 동일). 파이프라인이 결정적이라는 뜻이라 함께 기록한다.
 - **되돌림**: `scripts/gen-sprites.mjs`는 삭제하지 않았다. `npm run gen:sprites`로 기존 코드 생성본이
   그대로 복원된다(D14-e).
 - ⚠️ **숲 벽만 예외**: AI가 낸 숲 행은 2·4열(벽이 세로로 이어지는 칸)을 벽이 아니라 흙바닥으로
