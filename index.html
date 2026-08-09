@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>이세계 카피바라 — Capybara Escape</title>
+    <style>
+      /*
+       * 페이지 크롬(캔버스 바깥 영역). 게임 규칙과 무관한 페이지 레이아웃이라
+       * balance.ts 대상이 아니다. 색은 전부 src/scenes/palette.ts의 기존 값을
+       * 그대로 옮겨 썼다 — 새 색을 만들지 않는다.
+       *   ink         #16121C
+       *   capyWhite   #F0ECE2
+       *   warmTan     #B98F4E
+       */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      body {
+        background-color: #16121c; /* ink */
+        /*
+         * 목록 순서 = 위에서부터 쌓이는 순서(첫 항목이 가장 위).
+         * 1) 중앙 스포트라이트: capyWhite를 아주 낮은 알파로 중앙에만 얹어
+         *    시선이 캔버스로 모이게 한다. ink보다 "더 어두운 색"이 팔레트에
+         *    없어(ink가 가장 어둡다) 가장자리를 어둡게 하는 대신 중앙을
+         *    은은하게 밝히는 방식으로 비네트를 구현했다 — 팔레트 5색 밖의
+         *    색(예: 순수 검정)을 새로 쓰지 않기 위한 선택.
+         * 2) · 3) 45°/-45° 크로스해치: background.ts의 addCozySkyBackground가
+         *    쓰는 4px 셀 정렬 디더(DITHER_CELL_PX)와 같은 격자 크기·같은
+         *    "두 색만 번갈아 채운다" 언어를 페이지 배경에도 적용했다. 다만
+         *    여기는 하늘이 아니므로 sky_pink/sky_soft 대신 warmTan을 아주
+         *    옅게(4%) 썼다 — 캔버스보다 훨씬 약해야 한다는 요구를 알파로
+         *    지킨다.
+         */
+        background-image: radial-gradient(circle at center, rgba(240, 236, 226, 0.05) 0%, rgba(240, 236, 226, 0) 45%),
+          repeating-linear-gradient(45deg, rgba(185, 143, 78, 0.04) 0px, rgba(185, 143, 78, 0.04) 2px, transparent 2px, transparent 4px),
+          repeating-linear-gradient(
+            -45deg,
+            rgba(185, 143, 78, 0.04) 0px,
+            rgba(185, 143, 78, 0.04) 2px,
+            transparent 2px,
+            transparent 4px
+          );
+        background-attachment: fixed;
+      }
+
+      /* 캔버스 + 프레임 + 캡션을 세로로 쌓아 뷰포트 중앙에 놓는다. */
+      #page {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px; /* 프레임 ↔ 캡션 간격 */
+        min-height: 100%;
+        box-sizing: border-box;
+        padding: 8px; /* 아주 작은 뷰포트에서도 프레임이 가장자리에 바로 붙지 않게 */
+      }
+
+      /*
+       * 캔버스를 감싸는 픽셀아트 프레임. src/scenes/uiPanel.ts의 drawPanel()과
+       * 같은 언어: ink 채움 + ink 1px 외곽선 + 안쪽으로 들여 그린 warmTan 1px
+       * 강조선. 둥근 모서리는 픽셀아트와 안 맞아 border-radius를 쓰지 않는다.
+       *
+       * 여기 padding(10px)은 canvas 자체에는 적용되지 않는다 — canvas는 이
+       * div의 자식(#game-canvas-holder)일 뿐이라 applyIntegerPixelScale이
+       * 정한 canvas.style.width/height를 그대로 유지한다.
+       */
+      #frame {
+        position: relative;
+        display: inline-block;
+        padding: 10px;
+        background: #16121c; /* ink 채움 — drawPanel의 fillRect(ink)와 같은 역할 */
+        border: 1px solid #16121c; /* ink 1px 외곽선 — drawPanel의 바깥 strokeRect(ink)와 같은 역할 */
+        line-height: 0; /* inline-block 내부 canvas 아래에 생기는 여백 제거 */
+      }
+
+      /* warmTan 1px 강조선 — drawPanel의 안쪽 strokeRect(warmTan, PANEL_INSET_PX만큼 안쪽)와 같은 역할. */
+      #frame::before {
+        content: '';
+        position: absolute;
+        inset: 4px;
+        border: 1px solid #b98f4e; /* warmTan */
+        pointer-events: none;
+      }
+
+      #game-canvas-holder canvas {
+        display: block;
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges; /* 구형 Firefox 폴백. 새 의존성 아님 — 표준 CSS 프로퍼티. */
+      }
+
+      #caption {
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; /* 새 폰트 파일 추가 없음 — 브라우저 기본 스택만 사용 */
+        font-size: 13px;
+        line-height: 1.3;
+        color: #f0ece2; /* capyWhite */
+        text-align: center;
+        white-space: nowrap;
+      }
+
+      #caption .accent {
+        color: #b98f4e; /* warmTan */
+      }
+
+      /* 아주 작은 뷰포트: 프레임·캡션이 먼저 줄어들어 캔버스가 절대 넘치지 않게 한다. */
+      @media (max-width: 480px), (max-height: 560px) {
+        #page {
+          padding: 4px;
+          gap: 3px;
+        }
+        #frame {
+          padding: 6px;
+        }
+        #frame::before {
+          inset: 2px;
+        }
+        #caption {
+          font-size: 11px;
+          white-space: normal;
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="/capybara-escape/assets/index-hrZXDPx6.js"></script>
+  </head>
+  <body>
+    <div id="page">
+      <div id="frame">
+        <div id="game-canvas-holder"></div>
+      </div>
+      <div id="caption">이세계 카피바라 <span class="accent">·</span> 방향키 / WASD 이동</div>
+    </div>
+  </body>
+</html>
