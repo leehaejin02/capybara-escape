@@ -202,13 +202,30 @@ function toHtml(md) {
     if (isUl(line) || isOl(line)) {
       const ordered = isOl(line);
       const same = ordered ? isOl : isUl;
+      // 번호 목록의 시작 번호를 보존한다. 이어지는 줄 처리가 없던 시절 `2.`가 별개 <ol>로
+      // 잘려 PDF에서 "1. / 1."로 인쇄됐다(2026-08-09 실물 확인).
+      const startNo = ordered ? Number(line.match(/^\s*(\d+)\./)[1]) : 1;
       const items = [];
       while (i < lines.length && same(lines[i])) {
-        items.push(lines[i].replace(ordered ? /^\s*\d+\.\s+/ : /^\s*[-*]\s+/, ''));
+        let text = lines[i].replace(ordered ? /^\s*\d+\.\s+/ : /^\s*[-*]\s+/, '');
         i += 1;
+        // **들여쓴 이어지는 줄**을 같은 항목에 붙인다. 이게 없으면 항목 하나가 끝난 것으로
+        // 보여 목록이 끊기고, 뒤 항목이 새 목록으로 다시 시작한다.
+        while (
+          i < lines.length &&
+          /^\s{2,}\S/.test(lines[i]) &&
+          !isUl(lines[i]) &&
+          !isOl(lines[i]) &&
+          !/^\s*(#{1,4}\s|>|\||```)/.test(lines[i])
+        ) {
+          text += `\n${lines[i].trim()}`;
+          i += 1;
+        }
+        items.push(text);
       }
       const tag = ordered ? 'ol' : 'ul';
-      out.push(`<${tag}>${items.map((t) => `<li>${inline(t)}</li>`).join('')}</${tag}>`);
+      const attr = ordered && startNo !== 1 ? ` start="${startNo}"` : '';
+      out.push(`<${tag}${attr}>${items.map((t) => `<li>${inline(t)}</li>`).join('')}</${tag}>`);
       continue;
     }
 
@@ -254,6 +271,11 @@ function shell(title, body) {
   @page { size: A4; margin: 16mm 14mm; }
   :root { --ink:#1b1b1f; --muted:#5b5b66; --line:#d8d8e0; --accent:#b26a00; --bg-soft:#f6f6f9; }
   * { box-sizing: border-box; }
+  /* 표 머리·인용·코드블록의 배경색이 인쇄에서 사라지지 않게 강제한다.
+     이게 없으면 Chrome이 배경을 지워 대비가 무너진다(수동 인쇄의 '배경 그래픽' 체크와 같은 효과). */
+  html, body, table, th, td, pre, blockquote, .shot-missing {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
   body {
     margin: 0 auto; max-width: 820px; padding: 24px;
     font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
