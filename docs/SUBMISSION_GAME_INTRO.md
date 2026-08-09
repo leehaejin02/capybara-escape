@@ -21,7 +21,7 @@
 | **개발 기간** | **2026-08-06 ~ 2026-08-10** (4일) |
 | **플레이 링크** | https://leehaejin02.github.io/capybara-escape/ |
 | **저장소** | https://github.com/leehaejin02/capybara-escape |
-| **플레이 영상** | `TODO(코디네이터)` — YouTube 링크 |
+| **플레이 영상** | https://www.youtube.com/watch?v=qspGQt6AvOA (54초) |
 | **엔진 / 언어** | Phaser 3 · TypeScript · Vite |
 | **AI 활용 기술 문서** | 같은 저장소의 `docs/SUBMISSION_AI_TECH.md` (제출물 4번). **이 문서와 역할이 다르다** — 저쪽은 *어떻게 만들었나*, 이 문서는 *무슨 게임인가* |
 
@@ -221,7 +221,7 @@ PATROL ──(시야 내 감지)──> CHASE ──(시야 이탈 3초)──> 
 
 ---
 
-## 8. 스크린샷 (PDF 변환 시 삽입) — `TODO(코디네이터)`
+## 8. 스크린샷 목록 (A~E 5장, 본문 해당 절에 삽입 완료)
 
 | ID | 장면 | 요구 조건 | 배치 |
 |---|---|---|---|
