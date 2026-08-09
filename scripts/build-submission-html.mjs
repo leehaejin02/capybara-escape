@@ -71,7 +71,10 @@ function inline(src) {
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   // 굵게를 먼저 소비했으므로 남은 홑따옴표 별표 쌍만 기울임이다. 순서를 뒤집으면 **굵게**가
   // *굵게* 두 개로 잘못 잘린다.
-  s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  // `\n`을 배제하면 **두 줄에 걸친 기울임이 통째로 매칭 실패**해 별표가 본문에 그대로 인쇄된다
+  // (2026-08-09 실물 PDF에서 17쪽 중 12쪽에서 발견). 문단 단위로 호출되므로 개행을 허용해도
+  // 문단 경계를 넘지 않는다.
+  s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
 
   return s.replace(/\u0000(\d+)\u0000/g, (_, i) => spans[Number(i)]);
@@ -171,11 +174,13 @@ function toHtml(md) {
       continue;
     }
 
-    // 인용 — 연속된 `>` 줄을 모아 접두사를 떼고 재귀 변환
-    if (/^>/.test(line)) {
+    // 인용 — 연속된 `>` 줄을 모아 접두사를 떼고 재귀 변환.
+    // 열 0에만 앵커하면 **들여쓴 인용문(`   > …`)을 놓쳐** `>` 문자가 본문에 그대로 인쇄된다
+    // (2026-08-09 실물 PDF에서 발견. 하필 규정·라이선스를 인용한 절이었다).
+    if (/^\s*>/.test(line)) {
       const buf = [];
-      while (i < lines.length && /^>/.test(lines[i])) {
-        buf.push(lines[i].replace(/^>\s?/, ''));
+      while (i < lines.length && /^\s*>/.test(lines[i])) {
+        buf.push(lines[i].replace(/^\s*>\s?/, ''));
         i += 1;
       }
       out.push(`<blockquote>${toHtml(buf.join('\n'))}</blockquote>`);
@@ -298,8 +303,12 @@ function shell(title, body) {
   a { color: #1a5fb4; }
   code { font-family: ui-monospace, Consolas, monospace; font-size: 9.5pt;
          background: var(--bg-soft); padding: 1px 4px; border-radius: 3px; }
+  /* 인쇄에는 가로 스크롤이 없다. overflow-x:auto 만 두면 긴 줄이 잘려서 사라진다
+     (2026-08-09 실물 PDF에서 sim 스크립트 한 줄이 통째로 잘린 것을 발견).
+     줄바꿈을 허용해 잘림 대신 접히게 한다. */
   pre.code { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 5px;
-             padding: 10px 12px; overflow-x: auto; break-inside: avoid; page-break-inside: avoid; }
+             padding: 10px 12px; overflow-x: auto; break-inside: avoid; page-break-inside: avoid;
+             white-space: pre-wrap; overflow-wrap: anywhere; }
   pre.code code { background: none; padding: 0; font-size: 9pt; line-height: 1.5; }
   blockquote { margin: 12px 0; padding: 8px 14px; border-left: 4px solid var(--accent);
                background: #fbf7f0; break-inside: avoid; page-break-inside: avoid; }
@@ -307,7 +316,12 @@ function shell(title, body) {
   blockquote > :last-child { margin-bottom: 0; }
   table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 9.5pt;
           break-inside: avoid; page-break-inside: avoid; }
-  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  /* overflow-wrap: anywhere 를 그대로 물려받으면 좁은 첫 열에서 direct/or, verif/y,
+     숫자 1/0 처럼 단어와 수가 중간에서 쪼개진다 (2026-08-09 실물 PDF에서 발견).
+     꼭 필요할 때만 끊고, 한글은 단어 단위를 지키며, 첫 열에 최소 폭을 준다. */
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top;
+           overflow-wrap: break-word; word-break: keep-all; }
+  th:first-child, td:first-child { min-width: 5.5em; }
   thead th { background: var(--bg-soft); font-weight: 600; }
   figure.shot { margin: 16px 0; text-align: center; break-inside: avoid; page-break-inside: avoid; }
   figure.shot img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px;
