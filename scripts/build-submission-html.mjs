@@ -111,18 +111,24 @@ function splitRow(line) {
  */
 function parseShotMarker(line) {
   if (!/TODO\(코디네이터\)/.test(line)) return null;
-  const m = line.match(/스크린샷\s*([A-Da-d])\s*[:：]\s*([^*]+)/);
+  // A~E. 처음엔 A~D로 짰다가 §8이 결과 화면(E)까지 5장을 요구하는 것을 놓쳐 한 장이 조용히
+  // 빠졌다. 라벨을 늘릴 때 여기와 docs/screenshots/README.md를 같이 고쳐야 한다.
+  const m = line.match(/스크린샷\s*([A-Ea-e])\s*[:：]\s*([^*]+)/);
   if (!m) return null;
   return { label: m[1].toUpperCase(), caption: m[2].trim() };
 }
 
 const missing = [];
+/** 이미지가 실제로 들어간 스크린샷 자리 수. 아래 TODO 집계에서 빼기 위해 센다 —
+ *  채워진 자리까지 "남은 TODO"로 세면 영원히 0이 되지 않는다. */
+let shotsResolved = 0;
 
 function renderShot(label, caption) {
   const file = findShot(label);
   if (file) {
     const uri = dataUri(file);
     if (uri) {
+      shotsResolved += 1;
       return `<figure class="shot"><img src="${uri}" alt="스크린샷 ${label}"><figcaption>스크린샷 ${label} — ${escapeHtml(caption)}</figcaption></figure>`;
     }
   }
@@ -321,12 +327,16 @@ for (const t of TARGETS) {
 }
 
 // 남은 TODO 마커도 같이 센다 — 스크린샷 외의 미기입도 PDF 직전에 잡아야 한다.
-const todoLeft = TARGETS.reduce((n, t) => {
+// 이미 이미지가 들어간 스크린샷 자리는 뺀다(원문에는 마커 문자열이 그대로 남아 있다).
+const todoRaw = TARGETS.reduce((n, t) => {
   const body = readFileSync(join(DOCS, t.src), 'utf8');
   return n + (body.match(/TODO\(코디네이터\)/g) || []).length;
 }, 0);
+const todoLeft = todoRaw - shotsResolved;
 
-console.log(`build-submission: 남은 TODO(코디네이터) 마커 ${todoLeft}건`);
+console.log(
+  `build-submission: 스크린샷 ${shotsResolved}장 삽입됨 · 남은 TODO(코디네이터) ${todoLeft}건 (원문 마커 ${todoRaw})`
+);
 
 if (missing.length) {
   console.error(`\nbuild-submission: 스크린샷 ${missing.length}장이 비어 있습니다 — 이대로 PDF를 만들면 빨간 자리표시자가 그대로 실립니다.`);

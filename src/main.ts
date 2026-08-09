@@ -24,9 +24,31 @@ const config: Phaser.Types.Core.GameConfig = {
   pixelArt: true,
   roundPixels: true,
   scene: [BootScene, IntroScene, CustomizeScene, GameScene, ResultScene],
+
+  /*
+   * 개발 모드 전용 — 제출용 스크린샷 캡처를 가능하게 하는 두 가지.
+   * `import.meta.env.DEV`는 `vite build`에서 false로 상수 폴딩되므로 **배포본에는 없다.**
+   *
+   * - preserveDrawingBuffer: WebGL은 기본적으로 그린 직후 버퍼를 버려서
+   *   `canvas.toDataURL()`이 빈 이미지를 준다. 켜면 캔버스에서 960×640 원본 픽셀을
+   *   그대로 뽑을 수 있다(스크린샷 크롭이 어긋날 일이 없다). 약간의 성능 비용이 있어
+   *   배포본에는 넣지 않는다.
+   * - forceSetTimeOut: 브라우저는 **백그라운드 탭에서 requestAnimationFrame을 멈춘다.**
+   *   그러면 게임 루프가 자서 인게임 화면까지 진행시킬 수 없다. setTimeout 루프로
+   *   바꾸면 탭이 숨겨져 있어도 계속 돈다. 실제 플레이 품질과는 무관한 개발 편의다.
+   */
+  ...(import.meta.env.DEV
+    ? { render: { preserveDrawingBuffer: true }, fps: { forceSetTimeOut: true } }
+    : {}),
 };
 
 const game = new Phaser.Game(config);
+
+// 개발 모드에서만 게임 인스턴스를 노출한다. 스크린샷 캡처 스크립트가 씬 상태를 읽고
+// 캔버스를 뽑는 데 쓴다. 배포본에는 이 줄이 남지 않는다.
+if (import.meta.env.DEV) {
+  (window as unknown as { __game?: Phaser.Game }).__game = game;
+}
 
 /**
  * DPR 정수 픽셀 매핑 보정.

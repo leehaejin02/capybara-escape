@@ -1,4 +1,50 @@
-import { defineConfig } from 'vite';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { defineConfig, type Plugin } from 'vite';
+
+/**
+ * 개발 서버 전용 스크린샷 저장 엔드포인트.
+ *
+ * 왜 필요한가: 제출물 3·4번 PDF에 들어갈 스크린샷을 잡아야 하는데, 브라우저 자동화로
+ * 찍으면 (a) 캔버스 바깥 페이지 배경까지 딸려 오고 (b) 리전 크롭이 뷰포트 경계에서
+ * 어긋난다. 캔버스에서 직접 `toDataURL()`로 뽑으면 **정확히 960×640 원본 픽셀**이
+ * 나오므로, 그 결과를 여기로 POST해서 `docs/screenshots/`에 저장한다.
+ *
+ * `apply: 'serve'`라 **`vite build` 산출물에는 존재하지 않는다.** 배포본에는 이 경로가 없다.
+ */
+function screenshotSaverPlugin(): Plugin {
+  return {
+    name: 'capybara-screenshot-saver',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/__shot', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end('POST only');
+          return;
+        }
+        const chunks: Buffer[] = [];
+        req.on('data', (c: Buffer) => chunks.push(c));
+        req.on('end', () => {
+          try {
+            const { name, dataUrl } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+            // 경로 조작 차단 — 파일명은 A~E 라벨과 확장자만 허용한다.
+            if (!/^[A-Za-z0-9_-]+\.png$/.test(name)) throw new Error(`잘못된 파일명: ${name}`);
+            const b64 = String(dataUrl).replace(/^data:image\/png;base64,/, '');
+            const dir = join(process.cwd(), 'docs', 'screenshots');
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(join(dir, name), Buffer.from(b64, 'base64'));
+            res.statusCode = 200;
+            res.end(`saved docs/screenshots/${name}`);
+          } catch (e) {
+            res.statusCode = 400;
+            res.end(`failed: ${(e as Error).message}`);
+          }
+        });
+      });
+    },
+  };
+}
 
 /*
  * `public/assets/*.png`는 Vite가 해시를 붙이지 않고 파일명 그대로 복사한다.
@@ -21,6 +67,7 @@ import { defineConfig } from 'vite';
 // 겉보기엔 동작하지만 조용히 뒤집힐 수 있다 — 그러면 캐시 무효화가 소리 없이 꺼진다.
 export default defineConfig(({ command }) => ({
   base: '/capybara-escape/',
+  plugins: [screenshotSaverPlugin()],
   define: {
     __ASSET_VERSION__: JSON.stringify(command === 'build' ? Date.now().toString(36) : 'dev'),
   },
